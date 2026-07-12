@@ -84,6 +84,12 @@ Created and maintained by **Muhammad Imran Khan** ([@imrankhan-coder](https://gi
 If you use, deploy, or build on this project, attribution is appreciated and — under
 the AGPL — required. Please keep the copyright notice and link back to this repository.
 
+## Acknowledgements
+
+Built and maintained by **Muhammad Imran Khan** ([@imrankhan-coder](https://github.com/imrankhan-coder)).
+
+Developed with the assistance of AI coding tools.
+
 ## License
 
 Licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)** — see
