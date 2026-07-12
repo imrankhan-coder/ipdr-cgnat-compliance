@@ -116,7 +116,7 @@ Apply the schema files in order. They are idempotent:
 
 ```bash
 cd /opt/ipdr/schema
-for f in mikrotik_schema.sql mikrotik_partition.sql mikrotik_ppp_sessions.sql \
+for f in 00_core.sql mikrotik_schema.sql mikrotik_partition.sql mikrotik_ppp_sessions.sql \
          mikrotik_secrets.sql mikrotik_srcmac.sql mikrotik_dhcp.sql \
          mikrotik_lea_username.sql \
          mikrotik_flowview.sql mikrotik_cdn.sql mikrotik_scale.sql \
@@ -129,6 +129,10 @@ done
 (Adjust the list to the files present in `schema/`.)
 
 ---
+
+> **Default login:** the schema seeds an admin account — username `admin`,
+> password `changeme`. **Change it immediately** on first login (Settings →
+> Users) or run `IPDR_ENV=/opt/ipdr/.env python3 scripts/init_admin.py`.
 
 ## 7. Syslog ingest (NAT logs)
 

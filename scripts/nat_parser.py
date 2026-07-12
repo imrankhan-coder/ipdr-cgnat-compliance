@@ -58,7 +58,7 @@ log = logging.getLogger("nat-parser")
 # PBA_ALLOC example:
 # <14>Jun 30 22:44:25 SITE-B-BNG-01 RT_NAT: RT_SRC_NAT_PBA_ALLOC:
 # Subscriber 100.64.60.74 used/maximum [10/15] blocks, allocates port block
-# [24064-24191] from 203.0.113.100 in source pool PLUS_WAN_0 lsys_id: 0 epoch 0x6a44007a
+# [24064-24191] from 203.0.113.100 in source pool EXAMPLE_POOL lsys_id: 0 epoch 0x6a44007a
 
 RE_PBA_ALLOC = re.compile(
     r"(?P<timestamp>\w+\s+\d+\s+[\d:]+)\s+"
@@ -75,7 +75,7 @@ RE_PBA_ALLOC = re.compile(
 
 # PBA_RELEASE example:
 # RT_SRC_NAT_PBA_RELEASE: Subscriber 100.64.x.x used/maximum [5/15] blocks,
-# releases port block [1024-1151] from 203.0.113.x in source pool PLUS_WAN_0
+# releases port block [1024-1151] from 203.0.113.x in source pool EXAMPLE_POOL
 RE_PBA_RELEASE = re.compile(
     r"(?P<timestamp>\w+\s+\d+\s+[\d:]+)\s+"
     r"(?P<hostname>\S+)\s+"

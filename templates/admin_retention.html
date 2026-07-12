@@ -2,7 +2,7 @@
 {% block title %}Data Retention{% endblock %}
 {% block page_title %}<i class="fas fa-database"></i> Data Retention{% endblock %}
 {% block content %}
-<div class="peca-banner"><i class="fas fa-exclamation-triangle"></i> <strong>PECA Section 29:</strong> Minimum data retention is 1 year. Do not purge data less than 13 months old.</div>
+<div class="peca-banner"><i class="fas fa-exclamation-triangle"></i> <strong>Lawful Intercept:</strong> Minimum data retention is 1 year. Do not purge data less than 13 months old.</div>
 <div class="card-grid">
     <div class="stat-card primary"><div class="stat-label">NAT Logs</div><div class="stat-value">{{ "{:,}".format(stats.nat_count) if stats else 0 }}</div><div class="stat-sub">Oldest: {{ stats.nat_oldest.strftime('%Y-%m-%d') if stats and stats.nat_oldest else 'None' }}</div></div>
     <div class="stat-card warning"><div class="stat-label">Flow Logs</div><div class="stat-value">{{ "{:,}".format(stats.flow_count) if stats else 0 }}</div><div class="stat-sub">Oldest: {{ stats.flow_oldest.strftime('%Y-%m-%d') if stats and stats.flow_oldest else 'None' }}</div></div>

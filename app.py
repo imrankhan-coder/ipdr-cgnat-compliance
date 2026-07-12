@@ -856,7 +856,7 @@ def export_lea_report():
         output.write("No matching records found.\n")
 
     output.write(f"\n{'='*60}\n")
-    output.write(f"PECA Section 29 — Retention: Minimum 1 Year\n")
+    output.write(f"lawful-intercept regulations — Retention: Minimum 1 Year\n")
     output.write(f"This report is generated from automated CGNAT logging systems.\n")
     output.write(f"Data integrity verified by system audit trail.\n")
 
