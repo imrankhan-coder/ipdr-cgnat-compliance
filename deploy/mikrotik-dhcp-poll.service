@@ -1,0 +1,9 @@
+[Unit]
+Description=IPDR MikroTik DHCP lease poller
+After=network.target postgresql.service
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=/opt/ipdr/.env
+ExecStart=/opt/ipdr/venv/bin/python /opt/ipdr/scripts/mikrotik_dhcp_poll.py

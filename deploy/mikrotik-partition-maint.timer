@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily IPDR MikroTik partition maintenance
+
+[Timer]
+# 03:15 daily — before anything else, keeps partitions provisioned + pruned.
+OnCalendar=*-*-* 03:15:00
+RandomizedDelaySec=3min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,15 @@
+[Unit]
+Description=IPDR MikroTik partition maintenance (create ahead, drop expired)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ipdr
+EnvironmentFile=/opt/ipdr/.env
+Environment=IPDR_ENV=/opt/ipdr/.env
+# Retention window (days) — CHANGE per your PTA/legal obligation.
+Environment=MT_RETENTION_DAYS=90
+Environment=MT_PARTITION_AHEAD=7
+ExecStart=/opt/ipdr/venv/bin/python /opt/ipdr/scripts/mikrotik_partition_maint.py
+TimeoutStartSec=600

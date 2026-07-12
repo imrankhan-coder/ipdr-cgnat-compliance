@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}CDN Prefixes — {{ dev.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1><i class="fas fa-sitemap"></i> CDN Prefixes — {{ dev.name }}</h1>
+    <p class="text-muted">
+        Per-NAS app classification. Traffic to these prefixes is labelled with the
+        app in Analytics → Top Applications. {{ total }} prefix(es) configured.
+        <a href="{{ url_for('nas_devices') }}">← back to NAS Devices</a>
+    </p>
+</div>
+
+<div class="card">
+    <div class="card-header"><i class="fas fa-plus"></i> Add prefix</div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('nas_cdn_add', nas_id=dev.id) }}">
+            <div class="form-row" style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+                <div class="form-group" style="flex:1; min-width:160px;">
+                    <label>App label</label>
+                    <input type="text" name="app" class="form-control" list="applist"
+                           placeholder="Netflix" required>
+                    <datalist id="applist">
+                        {% for a in by_app.keys() %}<option value="{{ a }}">{% endfor %}
+                        <option value="Netflix"><option value="Google"><option value="YouTube">
+                        <option value="Meta"><option value="TikTok"><option value="Cloudflare">
+                        <option value="Akamai"><option value="Amazon"><option value="Microsoft">
+                    </datalist>
+                </div>
+                <div class="form-group" style="flex:1; min-width:180px;">
+                    <label>Prefix (IP or CIDR)</label>
+                    <input type="text" name="prefix" class="form-control mono"
+                           placeholder="45.57.0.0/17" required>
+                </div>
+                <div class="form-group" style="flex:2; min-width:200px;">
+                    <label>Comment (optional)</label>
+                    <input type="text" name="comment" class="form-control" placeholder="OCA local cache">
+                </div>
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-plus"></i> Add</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><i class="fas fa-paste"></i> Bulk paste</div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('nas_cdn_bulk', nas_id=dev.id) }}">
+            <p class="text-muted" style="font-size:12px; margin-top:0;">
+                One entry per line: <span class="mono">app,prefix</span> or
+                <span class="mono">app,prefix,comment</span>. Lines starting with # are ignored.
+            </p>
+            <textarea name="bulk" class="form-control mono" rows="6"
+                placeholder="Cloudflare,172.64.0.0/13&#10;Netflix,45.57.0.0/17,OCA&#10;Meta,157.240.0.0/16"></textarea>
+            <button type="submit" class="btn btn-primary" style="margin-top:8px;">
+                <i class="fas fa-upload"></i> Import
+            </button>
+        </form>
+    </div>
+</div>
+
+{% if by_app %}
+{% for app, rows in by_app.items() %}
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between;">
+        <span><i class="fas fa-tag"></i> {{ app }}</span>
+        <span class="text-muted" style="font-size:12px;">{{ rows|length }} prefix(es)</span>
+    </div>
+    <div class="card-body" style="overflow-x:auto;">
+        <table class="data-table">
+            <thead><tr><th>Prefix</th><th>Comment</th><th style="width:80px;">Action</th></tr></thead>
+            <tbody>
+            {% for p in rows %}
+            <tr>
+                <td class="mono">{{ p.cidr }}</td>
+                <td>{{ p.comment or '' }}</td>
+                <td>
+                    <form method="POST" action="{{ url_for('nas_cdn_delete', nas_id=dev.id) }}"
+                          style="margin:0;" onsubmit="return confirm('Delete {{ p.cidr }}?');">
+                        <input type="hidden" name="id" value="{{ p.id }}">
+                        <button type="submit" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i></button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="card"><div class="card-body text-muted" style="text-align:center; padding:24px;">
+    No CDN prefixes yet. Add prefixes above to classify {{ dev.name }}'s traffic by app.
+</div></div>
+{% endif %}
+{% endblock %}

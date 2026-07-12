@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+{% block title %}System Status{% endblock %}
+{% block page_title %}<i class="fas fa-server"></i> System Status{% endblock %}
+{% block content %}
+<script>
+// elb-util-bar helpers: smooth green->amber->red ramp by percentage
+function elbRampColor(pct){
+  pct = Math.max(0, Math.min(100, pct));
+  // hue 120 (green) at 0% down to 0 (red) at 100%, but bias so mid stays amber
+  var hue = 120 - (pct * 1.2);         // 0%->120(green), 100%->0(red)
+  if (hue < 0) hue = 0;
+  var sat = 70, light = 45;
+  return 'hsl(' + hue + ',' + sat + '%,' + light + '%)';
+}
+function elbSetBar(id, pct){
+  var el = document.getElementById(id);
+  if (!el) return;
+  pct = Math.max(0, Math.min(100, pct || 0));
+  el.style.width = pct + '%';
+  el.style.backgroundColor = elbRampColor(pct);
+}
+// live local clock
+function elbTick(){
+  var el = document.getElementById('elb-clock');
+  if (!el) return;
+  var d = new Date();
+  var opts = {weekday:'short', day:'2-digit', month:'short', year:'numeric'};
+  var date = d.toLocaleDateString(undefined, opts);
+  var time = d.toLocaleTimeString(undefined, {hour12:false});
+  el.textContent = date + ' \u00b7 ' + time;
+}
+setInterval(elbTick, 1000);
+document.addEventListener('DOMContentLoaded', elbTick);
+</script>
+<div style="text-align:right; font-size:12px; color:var(--text-muted); margin-bottom:8px;">
+  <i class="far fa-clock"></i> <span id="elb-clock">—</span>
+</div>
+<!-- elb-util-bar -->
+
+<div class="card-grid" id="liveMetrics">
+    <div class="stat-card primary">
+        <div class="stat-label"><i class="fas fa-microchip"></i> CPU</div>
+        <div class="stat-value" id="m-cpu">—</div>
+        <div class="elb-util-bar" style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin:6px 0 4px;"><div id="m-cpu-bar" style="height:100%;width:0%;border-radius:4px;transition:width .4s ease, background-color .4s ease;"></div></div>
+        <div class="stat-sub" id="m-cpu-sub">loading...</div>
+    </div>
+    <div class="stat-card success">
+        <div class="stat-label"><i class="fas fa-memory"></i> Memory</div>
+        <div class="stat-value" id="m-ram">—</div>
+        <div class="elb-util-bar" style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin:6px 0 4px;"><div id="m-ram-bar" style="height:100%;width:0%;border-radius:4px;transition:width .4s ease, background-color .4s ease;"></div></div>
+        <div class="stat-sub" id="m-ram-sub">loading...</div>
+    </div>
+    <div class="stat-card warning">
+        <div class="stat-label"><i class="fas fa-clock"></i> Uptime</div>
+        <div class="stat-value" style="font-size:22px;" id="m-uptime">—</div>
+        <div class="stat-sub" id="m-load">load: —</div>
+    </div>
+    <div class="stat-card danger">
+        <div class="stat-label"><i class="fas fa-network-wired"></i> Network I/O</div>
+        <div class="stat-value" style="font-size:22px;" id="m-net">—</div>
+        <div class="stat-sub">total since boot</div>
+    </div>
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+    <div class="card">
+        <div class="card-header">Service Health</div>
+        <div id="serviceHealth" style="display:flex; flex-direction:column; gap:8px;">
+            <div style="color:var(--text-muted); font-size:13px;">Loading...</div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header">Feed Freshness</div>
+        <div id="feedHealth" style="display:flex; flex-direction:column; gap:10px;">
+            <div style="color:var(--text-muted); font-size:13px;">Loading...</div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <span>Storage</span>
+        <span style="font-size:11px; color:var(--text-muted);" id="storage-updated"></span>
+    </div>
+    <div id="storageBars" style="display:flex; flex-direction:column; gap:16px;">
+        <div style="color:var(--text-muted); font-size:13px;">Loading storage metrics...</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><i class="fas fa-hdd"></i> Storage Configuration</div>
+    <form method="POST" action="{{ url_for('save_storage_config') }}">
+        <div class="form-row">
+            <div class="form-group">
+                <label>Log Storage Path</label>
+                <input type="text" name="log_storage_path" class="form-control mono" value="{{ cfg.get('log_storage_path', '/var/log/nat') }}">
+                <small style="color:var(--text-muted); font-size:11px;">Raw NAT syslog files (monitored + rotated)</small>
+            </div>
+            <div class="form-group">
+                <label>Database Storage Path</label>
+                <input type="text" name="db_storage_path" class="form-control mono" value="{{ cfg.get('db_storage_path', '/var/lib/postgresql') }}">
+                <small style="color:var(--text-muted); font-size:11px;">PostgreSQL data directory</small>
+            </div>
+            <div class="form-group">
+                <label>Log Allocation (GB)</label>
+                <input type="number" name="log_storage_alloc_gb" class="form-control" value="{{ cfg.get('log_storage_alloc_gb', '0') }}" min="0">
+                <small style="color:var(--text-muted); font-size:11px;">0 = use full filesystem size</small>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Warn Threshold (%)</label>
+                <input type="number" name="storage_warn_pct" class="form-control" value="{{ cfg.get('storage_warn_pct', '75') }}" min="1" max="99">
+            </div>
+            <div class="form-group">
+                <label>Critical / Auto-Purge Threshold (%)</label>
+                <input type="number" name="storage_critical_pct" class="form-control" value="{{ cfg.get('storage_critical_pct', '90') }}" min="1" max="99">
+                <small style="color:var(--text-muted); font-size:11px;">Oldest flow logs purged when crossed</small>
+            </div>
+            <div class="form-group">
+                <label>Auto-Purge</label>
+                <div style="padding-top:8px;">
+                    <label style="font-size:13px; display:flex; align-items:center; gap:8px; cursor:pointer;">
+                        <input type="checkbox" name="autopurge_enabled" {% if cfg.get('autopurge_enabled', 'true') == 'true' %}checked{% endif %}>
+                        Enable self-healing purge
+                    </label>
+                </div>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Storage Config</button>
+    </form>
+</div>
+
+<div class="card-grid">
+    <div class="stat-card primary">
+        <div class="stat-label">Total Database Size</div>
+        <div class="stat-value">{{ db_info.db_size if db_info else 'N/A' }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">NAT Log Range</div>
+        <div class="stat-value" style="font-size:15px;">
+            {{ nat_range.oldest.strftime('%Y-%m-%d') if nat_range and nat_range.oldest else 'N/A' }}
+            → {{ nat_range.newest.strftime('%Y-%m-%d') if nat_range and nat_range.newest else 'N/A' }}
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">RADIUS Range</div>
+        <div class="stat-value" style="font-size:15px;">
+            {{ radius_range.oldest.strftime('%Y-%m-%d') if radius_range and radius_range.oldest else 'N/A' }}
+            → {{ radius_range.newest.strftime('%Y-%m-%d') if radius_range and radius_range.newest else 'N/A' }}
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">Table Sizes</div>
+    <div style="overflow-x:auto;">
+    <table>
+        <thead><tr><th>Table</th><th>Size</th><th>Rows</th></tr></thead>
+        <tbody>
+        {% for t in table_sizes %}
+        <tr>
+            <td class="mono">{{ t.table_name }}</td>
+            <td>{{ t.total_size }}</td>
+            <td>{{ "{:,}".format(t.row_count or 0) }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function bar(pct, warn, crit) {
+    let color = 'var(--success)';
+    if (pct >= crit) color = 'var(--danger)';
+    else if (pct >= warn) color = 'var(--warning)';
+    return '<div style="background:var(--bg-dark); border-radius:4px; height:10px; overflow:hidden; margin-top:4px;">' +
+           '<div style="width:' + Math.min(pct,100) + '%; height:100%; background:' + color + '; transition:width 0.3s;"></div></div>';
+}
+function fmtAge(s) {
+    if (s === null || s === undefined) return 'no data';
+    if (s < 60) return s + 's ago';
+    if (s < 3600) return Math.round(s/60) + 'm ago';
+    return Math.round(s/3600) + 'h ago';
+}
+function loadMetrics() {
+    fetch('/api/system-metrics').then(r => r.json()).then(d => {
+        if (d.error) return;
+        const warn = d.warn_pct, crit = d.critical_pct;
+        document.getElementById('m-cpu').textContent = d.cpu.cpu_pct + '%';
+        elbSetBar('m-cpu-bar', d.cpu.cpu_pct);
+        document.getElementById('m-cpu-sub').textContent = d.cpu.cpu_cores + ' core' + (d.cpu.cpu_cores>1?'s':'');
+        document.getElementById('m-ram').textContent = d.cpu.ram_pct + '%';
+        elbSetBar('m-ram-bar', d.cpu.ram_pct);
+        document.getElementById('m-ram-sub').textContent = d.cpu.ram_used_gb + ' / ' + d.cpu.ram_total_gb + ' GB';
+        document.getElementById('m-uptime').textContent = d.uptime;
+        document.getElementById('m-load').textContent = 'load: ' + d.cpu.load1 + ' / ' + d.cpu.load5 + ' / ' + d.cpu.load15;
+        document.getElementById('m-net').textContent = '\u2193' + d.net.recv_gb + ' \u2191' + d.net.sent_gb + ' GB';
+
+        // svcNames-vendor-aware
+        const svcNames = (d.engine === 'mikrotik')
+            ? {'ipdr-web':'Web Portal','mikrotik-ingest':'MikroTik Ingest','mikrotik-secrets-sync.timer':'Secrets Sync','mikrotik-dhcp-poll.timer':'DHCP Poll','postgresql':'PostgreSQL'}
+            : {'ipdr-web':'Web Portal','ipdr-nat-parser':'NAT Parser','ipdr-radius-parser':'RADIUS Parser','postgresql':'PostgreSQL','freeradius':'FreeRADIUS'};
+        let svcHtml = '';
+        for (const k in svcNames) {
+            const st = d.services[k] || 'unknown';
+            const ok = st === 'active';
+            const color = ok ? 'var(--success)' : (st==='unknown'?'var(--text-muted)':'var(--danger)');
+            svcHtml += '<div style="display:flex; justify-content:space-between; align-items:center; font-size:13px;"><span>' + svcNames[k] + '</span><span style="color:' + color + '; font-weight:600;"><i class="fas fa-circle" style="font-size:8px;"></i> ' + st + '</span></div>';
+        }
+        document.getElementById('serviceHealth').innerHTML = svcHtml;
+
+        const feedRow = (label, age) => {
+            let color = 'var(--success)', status = 'healthy';
+            if (age === null) { color='var(--text-muted)'; status='no data'; }
+            else if (age > 600) { color='var(--danger)'; status='STALE'; }
+            else if (age > 120) { color='var(--warning)'; status='delayed'; }
+            return '<div style="display:flex; justify-content:space-between; align-items:center; font-size:13px;"><span>' + label + '</span><span style="color:' + color + ';">' + fmtAge(age) + ' <span style="font-size:11px; opacity:0.8;">(' + status + ')</span></span></div>';
+        };
+        document.getElementById('feedHealth').innerHTML = (d.engine === 'mikrotik')
+            ? feedRow('Flow Ingestion', d.feeds.nat_age) + feedRow('DHCP Poll', d.feeds.dhcp_age) + feedRow('Secrets Sync', d.feeds.secrets_age)
+            : feedRow('NAT Flow Ingestion', d.feeds.nat_age) + feedRow('RADIUS Accounting', d.feeds.radius_age);
+
+        let sHtml = '';
+        const storageRow = (label, path, used, total, pct, extra) => {
+            return '<div><div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:2px;"><span><strong>' + label + '</strong> <span style="color:var(--text-muted); font-size:11px;">' + (path||'') + '</span></span><span>' + used + ' / ' + total + ' GB (' + pct + '%) ' + (extra||'') + '</span></div>' + bar(pct, warn, crit) + '</div>';
+        };
+        if (d.root_disk) sHtml += storageRow('Root Filesystem', d.root_disk.path, d.root_disk.used_gb, d.root_disk.total_gb, d.root_disk.pct, '');
+        const ls = d.log_storage;
+        if (ls) {
+            const extra = ls.mode==='allocated' ? '<span style="color:var(--text-muted);font-size:11px;">(allocated)</span>' : '';
+            sHtml += storageRow('Log Storage', ls.path||d.log_path, ls.used_gb, ls.alloc_gb||'?', ls.pct, extra);
+        }
+        if (d.db_disk && (!d.root_disk || d.db_disk.path !== d.root_disk.path)) {
+            sHtml += storageRow('Database Volume', d.db_disk.path, d.db_disk.used_gb, d.db_disk.total_gb, d.db_disk.pct, '');
+        }
+        sHtml += '<div style="font-size:12px; color:var(--text-muted);">PostgreSQL data: <strong>' + d.db_gb + ' GB</strong></div>';
+        document.getElementById('storageBars').innerHTML = sHtml;
+        document.getElementById('storage-updated').textContent = 'updated ' + new Date().toLocaleTimeString();
+    }).catch(() => {});
+}
+loadMetrics();
+setInterval(loadMetrics, 10000);
+</script>
+{% endblock %}

@@ -1,0 +1,12 @@
+[Unit]
+Description=IPDR MikroTik PPP session poller (/ppp/active -> session history)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ipdr
+EnvironmentFile=/opt/ipdr/.env
+Environment=IPDR_ENV=/opt/ipdr/.env
+ExecStart=/opt/ipdr/venv/bin/python /opt/ipdr/scripts/mikrotik_ppp_poll.py
+TimeoutStartSec=90

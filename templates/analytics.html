@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %}Analytics{% endblock %}
+{% block page_title %}<i class="fas fa-chart-line"></i> Analytics{% endblock %}
+
+{% block content %}
+<!-- Time Range Selector -->
+<div class="card" style="padding:12px 16px; margin-bottom:16px;">
+    <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+        <i class="fas fa-calendar" style="color:var(--text-muted); margin-right:6px;"></i>
+        {% for key, label in [('5m','Last 5 Min'),('15m','Last 15 Min'),('30m','Last 30 Min'),('1h','Last 1 Hour'),('12h','Last 12 Hours'),('24h','Last 24 Hours'),('1w','Last 1 Week'),('1M','Last 1 Month')] %}
+        <a href="{{ url_for('analytics', range=key) }}"
+           class="btn btn-sm {% if current_range == key %}btn-primary{% else %}btn-outline{% endif %}">{{ label }}</a>
+        {% endfor %}
+    </div>
+    {% if is_sampled %}
+    <div style="margin-top:10px; font-size:12px; color:var(--warning);">
+        <i class="fas fa-info-circle"></i> Long-range view uses {{ sample_pct }}% statistical sampling for speed — counts are estimates. Use shorter ranges for exact figures.
+    </div>
+    {% endif %}
+</div>
+
+<!-- Top Stats -->
+<div class="card-grid">
+    <div class="stat-card primary">
+        <div class="stat-label">Total Sessions</div>
+        <div class="stat-value">{{ "{:,}".format(stats.total_flows or 0) }}</div>
+        <div class="stat-sub">flow records in range</div>
+    </div>
+    <div class="stat-card success">
+        <div class="stat-label">Unique Subscribers</div>
+        <div class="stat-value">{{ "{:,}".format(stats.unique_subs or 0) }}</div>
+        <div class="stat-sub">active CGN IPs</div>
+    </div>
+    <div class="stat-card warning">
+        <div class="stat-label">Unique Destinations</div>
+        <div class="stat-value">{{ "{:,}".format(stats.unique_dests or 0) }}</div>
+        <div class="stat-sub">distinct target IPs</div>
+    </div>
+    <div class="stat-card danger">
+        <div class="stat-label">Active NAT IPs</div>
+        <div class="stat-value">{{ stats.active_nat_ips or 0 }}</div>
+        <div class="stat-sub">public IPs in use</div>
+    </div>
+</div>
+
+<!-- Session Timeline -->
+<div class="card">
+    <div class="card-header">Sessions Timeline</div>
+    <canvas id="timelineChart" height="80"></canvas>
+</div>
+
+<!-- Two column: Protocol + Services -->
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+    <div class="card">
+        <div class="card-header">Protocol Distribution</div>
+        <canvas id="protocolChart" height="140"></canvas>
+    </div>
+    <div class="card">
+        <div class="card-header">Top Applications</div>
+        <canvas id="appChart" height="140"></canvas>
+    </div>
+</div>
+
+<!-- Top Countries -->
+<div class="card">
+    <div class="card-header">Top Countries (by destination)</div>
+    <canvas id="countryChart" height="60"></canvas>
+</div>
+
+<!-- Two column: Top Subscribers + Top Destinations -->
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+    <div class="card">
+        <div class="card-header">Top Subscribers</div>
+        <div style="overflow-x:auto;">
+        <table>
+            <thead><tr><th>#</th><th>Username</th><th>CGN IP</th><th>Sessions</th><th>Destinations</th><th>Services</th></tr></thead>
+            <tbody>
+            {% for s in top_subs %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td>
+                    {% if s.username %}
+                    <a href="{{ url_for('subscriber_timeline', username=s.username) }}" style="color:var(--primary); text-decoration:none;">{{ s.username }}</a>
+                    {% else %}<span style="color:var(--text-muted);">—</span>{% endif %}
+                </td>
+                <td class="mono">
+                    <a href="{{ url_for('cgn_lookup', cgn_ip=s.source_ip) }}" style="color:var(--text); text-decoration:none;" title="CGN lookup">{{ s.source_ip }}</a>
+                </td>
+                <td>{{ "{:,}".format(s.sessions) }}</td>
+                <td>{{ "{:,}".format(s.destinations) }}</td>
+                <td>{{ s.services }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header">Top Destinations</div>
+        <div style="overflow-x:auto;">
+        <table>
+            <thead><tr><th>#</th><th>Destination IP</th><th>Sessions</th><th>Country</th></tr></thead>
+            <tbody>
+            {% for d in top_dests %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td class="mono">
+                    <a href="{{ url_for('dest_lookup', dest_ip=d.destination_ip) }}" style="color:var(--primary); text-decoration:none;">{{ d.destination_ip }}</a>
+                </td>
+                <td>{{ "{:,}".format(d.sessions) }}</td>
+                <td>{{ d.country }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+const CHART_COLORS = ['#20A0E0','#2ecc71','#f1c40f','#e74c3c','#9b59b6','#1abc9c','#e67e22','#3498db','#e84393','#00b894'];
+const _cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim() || '#7a8a9a';
+Chart.defaults.color = _cssVar('--text-muted');
+Chart.defaults.borderColor = _cssVar('--border');
+Chart.defaults.font.family = 'Segoe UI, system-ui, sans-serif';
+
+// Timeline
+new Chart(document.getElementById('timelineChart'), {
+    type: 'line',
+    data: {
+        labels: {{ timeline|map(attribute='t')|list|tojson }},
+        datasets: [
+            {label: 'Sessions', data: {{ timeline|map(attribute='sessions')|list|tojson }},
+             borderColor: '#20A0E0', backgroundColor: 'rgba(32,160,224,0.1)', fill: true, tension: 0.3, pointRadius: 0},
+            {label: 'Unique Subscribers', data: {{ timeline|map(attribute='subs')|list|tojson }},
+             borderColor: '#2ecc71', backgroundColor: 'rgba(46,204,113,0.1)', fill: true, tension: 0.3, pointRadius: 0}
+        ]
+    },
+    options: {responsive:true, maintainAspectRatio:true, plugins:{legend:{position:'bottom'}},
+              scales:{x:{grid:{display:false}}, y:{beginAtZero:true}}}
+});
+
+// Protocol donut
+new Chart(document.getElementById('protocolChart'), {
+    type: 'doughnut',
+    data: {
+        labels: {{ protocols|map(attribute='proto')|list|tojson }},
+        datasets: [{data: {{ protocols|map(attribute='cnt')|list|tojson }}, backgroundColor: CHART_COLORS, borderWidth:0}]
+    },
+    options: {responsive:true, maintainAspectRatio:true, plugins:{legend:{position:'right', labels:{boxWidth:12, padding:8}}}}
+});
+
+// Top Apps
+// APP_RAINBOW — distinct colour per application bar
+var APP_RAINBOW = ['#e6194B','#f58231','#ffe119','#bfef45','#3cb44b','#42d4f4','#4363d8','#911eb4','#f032e6','#a9a9a9','#9A6324','#469990'];
+new Chart(document.getElementById('appChart'), {
+    type: 'bar',
+    data: {
+        labels: {{ top_apps|map(attribute='app')|list|tojson }},
+        datasets: [{data: {{ top_apps|map(attribute='cnt')|list|tojson }}, backgroundColor: APP_RAINBOW, borderRadius:4}]
+    },
+    options: {indexAxis:'y', responsive:true, maintainAspectRatio:true, plugins:{legend:{display:false}},
+              scales:{x:{beginAtZero:true, grid:{display:false}}, y:{grid:{display:false}}}}
+});
+
+// Top Countries
+new Chart(document.getElementById('countryChart'), {
+    type: 'bar',
+    data: {
+        labels: {{ top_countries|map(attribute=0)|list|tojson }},
+        datasets: [{data: {{ top_countries|map(attribute=1)|list|tojson }}, backgroundColor: CHART_COLORS, borderRadius:4}]
+    },
+    options: {indexAxis:'y', responsive:true, maintainAspectRatio:true, plugins:{legend:{display:false}},
+              scales:{x:{beginAtZero:true}, y:{grid:{display:false}}}}
+});
+</script>
+{% endblock %}

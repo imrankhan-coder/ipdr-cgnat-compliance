@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}RADIUS Sessions{% endblock %}
+{% block page_title %}<i class="fas fa-broadcast-tower"></i> RADIUS Sessions{% endblock %}
+{% block content %}
+<div class="card">
+    <form method="GET" style="display:flex; gap:12px; align-items:end; flex-wrap:wrap;">
+        <div class="form-group" style="margin:0;"><label>Username</label><input type="text" name="username" class="form-control" value="{{ filters.username }}" placeholder="Search..."></div>
+        <div class="form-group" style="margin:0;"><label>&nbsp;</label><label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" name="active" value="1" {{ 'checked' if filters.active }}> Active only</label></div>
+        <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-filter"></i> Filter</button>
+    </form>
+</div>
+<div class="card">
+    <div class="card-header">{{ "{:,}".format(total_count) }} sessions</div>
+    <div style="overflow-x:auto;"><table>
+        <thead><tr><th>Username</th><th>CGN IP</th><th>MAC</th><th>VLAN</th><th>Start</th><th>End</th><th>Duration</th><th>Upload</th><th>Download</th></tr></thead>
+        <tbody>
+        {% for s in sessions %}
+        <tr>
+            <td><strong>{{ s.username }}</strong></td>
+            <td class="mono">{{ s.framed_ip }}</td>
+            <td class="mono">{{ s.calling_station_id|format_mac }}</td>
+            <td>{{ s.nas_port_id }}</td>
+            <td class="mono">{{ s.session_start.strftime('%m-%d %H:%M') if s.session_start else '' }}</td>
+            <td class="mono">{{ s.session_stop.strftime('%m-%d %H:%M') if s.session_stop else '<span class="badge badge-success">ACTIVE</span>'|safe }}</td>
+            <td>{{ (s.session_duration // 3600)|string + 'h' if s.session_duration else '' }}</td>
+            <td>{{ "%.1f"|format(s.input_octets / 1073741824) if s.input_octets else '0' }} GB</td>
+            <td>{{ "%.1f"|format(s.output_octets / 1073741824) if s.output_octets else '0' }} GB</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table></div>
+    <div class="pagination">
+        {% if page > 1 %}<a href="?page={{ page-1 }}&username={{ filters.username }}&active={{ filters.active }}">&laquo; Prev</a>{% endif %}
+        <span class="current">Page {{ page }} of {{ total_pages }}</span>
+        {% if page < total_pages %}<a href="?page={{ page+1 }}&username={{ filters.username }}&active={{ filters.active }}">Next &raquo;</a>{% endif %}
+    </div>
+</div>
+{% endblock %}

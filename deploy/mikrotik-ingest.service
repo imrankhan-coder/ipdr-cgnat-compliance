@@ -1,0 +1,23 @@
+[Unit]
+Description=IPDR MikroTik ingest daemon
+After=network-online.target postgresql.service rsyslog.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ipdr
+Group=adm
+# Pull DB creds from the app env file (PGHOST/PGDATABASE/PGUSER/PGPASSWORD).
+EnvironmentFile=/opt/ipdr/.env
+ExecStart=/opt/ipdr/venv/bin/python /opt/ipdr/scripts/mikrotik_ingest.py
+Restart=always
+RestartSec=3
+# Let a burst backlog flush cleanly on stop.
+TimeoutStopSec=20
+# Light hardening.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

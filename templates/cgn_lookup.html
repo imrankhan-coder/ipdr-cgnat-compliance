@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}CGN IP Lookup{% endblock %}
+{% block page_title %}<i class="fas fa-network-wired"></i> CGN IP Lookup{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header">Reverse Lookup: CGN IP → Username</div>
+    <form method="POST">
+        <div class="form-row">
+            <div class="form-group"><label>CGN IP (100.64.x.x) *</label><input type="text" name="cgn_ip" class="form-control mono" placeholder="100.64.60.74" value="{{ form_data.get('cgn_ip', '') }}" required></div>
+            <div class="form-group"><label>At Timestamp</label><input type="datetime-local" name="timestamp" class="form-control" value="{{ form_data.get('timestamp', '') }}"></div>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Lookup</button>
+    </form>
+</div>
+{% if results is not none %}
+<div class="card">
+    <div class="card-header">Results ({{ results|length }})</div>
+    <div style="overflow-x:auto;"><table>
+        <thead><tr><th>Username</th><th>CGN IP</th><th>MAC</th><th>VLAN</th><th>Session Start</th><th>Session End</th></tr></thead>
+        <tbody>
+        {% for s in results %}
+        <tr>
+            <td><strong>{{ s.username }}</strong></td>
+            <td class="mono">{{ s.framed_ip }}</td>
+            <td class="mono">{{ s.calling_station_id|format_mac }}</td>
+            <td>{{ s.nas_port_id }}</td>
+            <td class="mono">{{ s.session_start.strftime('%Y-%m-%d %H:%M') if s.session_start else '' }}</td>
+            <td class="mono">{{ s.session_stop.strftime('%Y-%m-%d %H:%M') if s.session_stop else 'ACTIVE' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table></div>
+</div>
+{% endif %}
+{% endblock %}

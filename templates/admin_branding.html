@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block title %}Branding{% endblock %}
+{% block page_title %}<i class="fas fa-palette"></i> Branding — White-Label Settings{% endblock %}
+{% block content %}
+
+<div class="peca-banner" style="background:rgba(32,160,224,0.1); border-color:rgba(32,160,224,0.3); color:var(--primary);">
+    <i class="fas fa-info-circle"></i>
+    <strong>White-label this portal</strong> with your client's logo, colors, and domain. Changes apply immediately after saving — refresh any open page to see them.
+</div>
+
+<!-- Identity / Text -->
+<div class="card">
+    <div class="card-header">Identity</div>
+    <form method="POST" action="{{ url_for('branding_save') }}">
+        <div class="form-row">
+            <div class="form-group">
+                <label>Product Name</label>
+                <input type="text" name="product_name" class="form-control" value="{{ b.product_name }}" placeholder="IPDR" maxlength="64">
+            </div>
+            <div class="form-group">
+                <label>Tagline</label>
+                <input type="text" name="tagline" class="form-control" value="{{ b.tagline }}" placeholder="CGNAT Compliance Portal" maxlength="128">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Company Name (topbar)</label>
+                <input type="text" name="company_name" class="form-control" value="{{ b.company_name }}" placeholder="Example ISP" maxlength="128">
+            </div>
+            <div class="form-group">
+                <label>Domain</label>
+                <input type="text" name="domain" class="form-control mono" value="{{ b.domain }}" placeholder="ipdr.client.com" maxlength="128">
+            </div>
+        </div>
+
+        <div class="card-header" style="margin-top:20px;">Color Scheme</div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px;">
+            {% set colors = [
+                ('color_primary', 'Primary / Accent'),
+                ('color_primary_dark', 'Primary Dark'),
+                ('color_bg_body', 'Body Background'),
+                ('color_bg_sidebar', 'Sidebar Background'),
+                ('color_bg_card', 'Card Background'),
+                ('color_bg_dark', 'Deep Background'),
+                ('color_success', 'Success'),
+                ('color_warning', 'Warning'),
+                ('color_danger', 'Danger'),
+            ] %}
+            {% for key, label in colors %}
+            <div class="form-group" style="margin-bottom:0;">
+                <label style="font-size:11px;">{{ label }}</label>
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <input type="color" name="{{ key }}" value="{{ b[key] }}"
+                           style="width:44px; height:38px; padding:2px; border:1px solid var(--border); border-radius:6px; background:var(--bg-dark); cursor:pointer;"
+                           oninput="this.nextElementSibling.value=this.value">
+                    <input type="text" value="{{ b[key] }}" class="form-control mono" style="font-size:12px;"
+                           oninput="this.previousElementSibling.value=this.value" maxlength="9">
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div style="margin-top:18px; display:flex; gap:10px;">
+            <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Identity &amp; Colors</button>
+        </div>
+    </form>
+    <form method="POST" action="{{ url_for('branding_reset') }}" style="margin-top:10px;"
+          onsubmit="return confirm('Reset all colors and text to ELB defaults? (Uploaded logo/favicon are kept)');">
+        <button type="submit" class="btn btn-sm btn-outline"><i class="fas fa-undo"></i> Reset to Defaults</button>
+    </form>
+</div>
+
+<!-- Logo Upload -->
+<div class="card">
+    <div class="card-header">Sidebar Logo</div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+        <div>
+            <form method="POST" action="{{ url_for('branding_logo') }}" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label>Upload Logo</label>
+                    <input type="file" name="logo" class="form-control" accept=".png,.svg,.jpg,.jpeg,.webp" required>
+                </div>
+                <div style="font-size:12px; color:var(--text-muted); margin-bottom:12px; line-height:1.7;">
+                    <strong>Requirements:</strong><br>
+                    • Format: {{ limits.logo_formats }}<br>
+                    • Max size: {{ limits.logo_max_kb }} KB<br>
+                    • Max dimensions: {{ limits.logo_max_dim }}×{{ limits.logo_max_dim }} px<br>
+                    • <strong>PNG with transparent background</strong> recommended<br>
+                    • Wide/horizontal logo works best (fits sidebar width)
+                </div>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-upload"></i> Upload Logo</button>
+            </form>
+        </div>
+        <div style="border-left:1px solid var(--border); padding-left:20px;">
+            <label style="font-size:11px; text-transform:uppercase; color:var(--text-muted);">Current Logo</label>
+            <div style="margin-top:10px; padding:16px; background:var(--bg-sidebar); border-radius:8px; text-align:center; min-height:80px; display:flex; align-items:center; justify-content:center;">
+                {% if b.has_logo %}
+                <img src="{{ url_for('branding_asset', filename='logo.png') }}?v={{ b.logo_version }}" style="max-width:100%; max-height:80px;">
+                {% else %}
+                <span style="color:var(--text-muted); font-size:13px;">No logo uploaded — using text brand</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Favicon Upload -->
+<div class="card">
+    <div class="card-header">Favicon</div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+        <div>
+            <form method="POST" action="{{ url_for('branding_favicon') }}" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label>Upload Square Icon</label>
+                    <input type="file" name="icon" class="form-control" accept=".png,.jpg,.jpeg,.webp" required>
+                </div>
+                <div style="font-size:12px; color:var(--text-muted); margin-bottom:12px; line-height:1.7;">
+                    <strong>Requirements:</strong><br>
+                    • Format: PNG, JPG, or WebP<br>
+                    • <strong>Square (1:1 ratio)</strong> — will be rejected otherwise<br>
+                    • Minimum: {{ limits.icon_min }}×{{ limits.icon_min }} px<br>
+                    • <strong>Recommended: {{ limits.icon_rec }}×{{ limits.icon_rec }} px</strong> for sharpest result<br>
+                    • Use a simplified brand mark (not full logo) — favicons are tiny<br>
+                    • The system auto-generates all sizes (16, 32, 48, 180, 192, 512 + .ico)
+                </div>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-magic"></i> Upload &amp; Generate Favicons</button>
+            </form>
+        </div>
+        <div style="border-left:1px solid var(--border); padding-left:20px;">
+            <label style="font-size:11px; text-transform:uppercase; color:var(--text-muted);">Current Favicon</label>
+            {% if b.has_favicon %}
+            <div style="margin-top:10px; display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+                <div style="text-align:center;">
+                    <img src="{{ url_for('branding_asset', filename='favicon-16x16.png') }}?v={{ b.favicon_version }}" style="width:16px; height:16px; image-rendering:pixelated;">
+                    <div style="font-size:10px; color:var(--text-muted);">16px</div>
+                </div>
+                <div style="text-align:center;">
+                    <img src="{{ url_for('branding_asset', filename='favicon-32x32.png') }}?v={{ b.favicon_version }}" style="width:32px; height:32px;">
+                    <div style="font-size:10px; color:var(--text-muted);">32px</div>
+                </div>
+                <div style="text-align:center;">
+                    <img src="{{ url_for('branding_asset', filename='favicon-48x48.png') }}?v={{ b.favicon_version }}" style="width:48px; height:48px;">
+                    <div style="font-size:10px; color:var(--text-muted);">48px</div>
+                </div>
+                <div style="text-align:center;">
+                    <img src="{{ url_for('branding_asset', filename='apple-touch-icon.png') }}?v={{ b.favicon_version }}" style="width:64px; height:64px; border-radius:12px;">
+                    <div style="font-size:10px; color:var(--text-muted);">iOS 180px</div>
+                </div>
+            </div>
+            {% else %}
+            <div style="margin-top:10px; padding:16px; background:var(--bg-sidebar); border-radius:8px; color:var(--text-muted); font-size:13px;">
+                No favicon uploaded yet.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% endblock %}

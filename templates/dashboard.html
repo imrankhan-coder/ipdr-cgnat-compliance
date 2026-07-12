@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}<i class="fas fa-tachometer-alt"></i> Dashboard{% endblock %}
+
+{% block content %}
+<!-- Feed Health -->
+<div id="health-bar" style="display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:20px;">
+    <div class="stat-card" id="hb-pba" style="border-left:3px solid var(--text-muted);">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div class="stat-label">{{ 'DHCP Poll' if stats.engine=='mikrotik' else 'NAT PBA Feed' }}</div><!-- feeds-vendor-aware -->
+            <div id="hb-pba-dot" style="width:10px;height:10px;border-radius:50%;background:var(--text-muted);"></div>
+        </div>
+        <div class="stat-value" style="font-size:20px;" id="hb-pba-rate">—</div>
+        <div class="stat-sub" id="hb-pba-last">Checking...</div>
+    </div>
+    <div class="stat-card" id="hb-flow" style="border-left:3px solid var(--text-muted);">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div class="stat-label">Flow Log Feed</div>
+            <div id="hb-flow-dot" style="width:10px;height:10px;border-radius:50%;background:var(--text-muted);"></div>
+        </div>
+        <div class="stat-value" style="font-size:20px;" id="hb-flow-rate">—</div>
+        <div class="stat-sub" id="hb-flow-last">Checking...</div>
+    </div>
+    <div class="stat-card" id="hb-radius" style="border-left:3px solid var(--text-muted);">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div class="stat-label">{{ 'Secrets Sync' if stats.engine=='mikrotik' else 'RADIUS Feed' }}</div>
+            <div id="hb-radius-dot" style="width:10px;height:10px;border-radius:50%;background:var(--text-muted);"></div>
+        </div>
+        <div class="stat-value" style="font-size:20px;" id="hb-radius-rate">—</div>
+        <div class="stat-sub" id="hb-radius-last">Checking...</div>
+    </div>
+    <div class="stat-card" style="border-left:3px solid var(--primary);">
+        <div class="stat-label">Database Size</div>
+        <div class="stat-value" style="font-size:20px;" id="hb-dbsize">—</div>
+        <div class="stat-sub">PostgreSQL ipdr</div>
+    </div>
+</div>
+
+<!-- Main Stats -->
+<div class="card-grid">
+    <div class="stat-card primary">
+        <div class="stat-label">{{ 'CGNAT Translations' if stats.engine=='mikrotik' else 'NAT PBA Logs' }}</div>
+        <div class="stat-value">{{ "{:,}".format(stats.nat_total) }}</div>
+        <div class="stat-sub">{{ "{:,}".format(stats.nat_24h) }} last 24h &middot; {{ "{:,}".format(stats.nat_1h) }} last 1h</div>
+    </div>
+    <div class="stat-card success">
+        <div class="stat-label">{{ 'Active Subscribers (24h)' if stats.engine=='mikrotik' else 'RADIUS Sessions' }}</div>
+        <div class="stat-value">{{ "{:,}".format(stats.radius_total) }}</div>
+        <div class="stat-sub">{{ "{:,}".format(stats.radius_active) }} {{ 'distinct users' if stats.engine=='mikrotik' else 'currently active' }}</div>
+    </div>
+    <div class="stat-card warning">
+        <div class="stat-label">LEA Queries</div>
+        <div class="stat-value">{{ "{:,}".format(stats.queries_total) }}</div>
+        <div class="stat-sub">{{ "{:,}".format(stats.queries_24h) }} last 24h</div>
+    </div>
+    <div class="stat-card danger">
+        <div class="stat-label">Public IPs in Pool</div>
+        <div class="stat-value">{{ stats.unique_public_ips }}</div>
+        <div class="stat-sub">{{ 'CGNAT public pool' if stats.engine=='mikrotik' else 'PLUS_WAN_0 &middot; 203.0.113.100/25' }}</div>
+    </div>
+</div>
+
+<!-- Two Column Layout -->
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+    <div class="card">
+        <div class="card-header">
+            <span>{{ 'Recent CGNAT Translations' if stats.engine=='mikrotik' else 'Recent NAT PBA Events' }}</span>
+            <a href="{{ url_for('nat_logs_view') }}" class="btn btn-sm btn-outline">View All</a>
+        </div>
+        <div style="overflow-x:auto;">
+        <table>
+            <thead><tr><th>Time</th><th>Type</th><th>Subscriber</th><th>Public IP</th><th>Port Block</th></tr></thead>
+            <tbody>
+            {% for log in recent_nat %}
+            <tr>
+                <td class="mono">{{ log.log_time.strftime('%H:%M:%S') if log.log_time else '' }}</td>
+                <td>
+                    {% if log.log_type == 'MT_XLATE' %}<span class="badge badge-success">XLATE</span>
+                    {% elif log.log_type == 'PBA_ALLOC' %}<span class="badge badge-success">ALLOC</span>
+                    {% elif log.log_type == 'PBA_RELEASE' %}<span class="badge badge-danger">RELEASE</span>
+                    {% elif log.log_type == 'PBA_INTERIM' %}<span class="badge badge-warning">INTERIM</span>
+                    {% else %}<span class="badge badge-info">{{ log.log_type }}</span>{% endif %}
+                </td>
+                <td class="mono">{{ log.subscriber_ip }}</td>
+                <td class="mono">{{ log.public_ip }}</td>
+                <td class="mono">{{ log.port_block_start }}-{{ log.port_block_end }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <span>Recent Audit Activity</span>
+            <a href="{{ url_for('admin_audit') if current_role == 'admin' else '#' }}" class="btn btn-sm btn-outline">View All</a>
+        </div>
+        <div style="overflow-x:auto;">
+        <table>
+            <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Detail</th></tr></thead>
+            <tbody>
+            {% for log in recent_audit %}
+            <tr>
+                <td class="mono">{{ log.created_at.strftime('%H:%M:%S') if log.created_at else '' }}</td>
+                <td>{{ log.username }}</td>
+                <td><span class="badge badge-primary">{{ log.action }}</span></td>
+                <td style="max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ log.detail }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function updateHealth() {
+    fetch('/api/health').then(r => r.json()).then(d => {
+        const colors = {healthy: '#2ecc71', stale: '#f1c40f', dead: '#e74c3c'};
+        var _isMT = {{ 'true' if stats.engine=='mikrotik' else 'false' }};
+        var _feedPairs = _isMT
+            ? ['pba:dhcp', 'flow:nat_flow', 'radius:secrets']
+            : ['pba:nat_pba', 'flow:nat_flow', 'radius:radius'];
+        _feedPairs.forEach(pair => {
+            const [key, dkey] = pair.split(':');
+            const feed = d[dkey];
+            if (!feed) return;
+            const dot = document.getElementById('hb-'+key+'-dot');
+            const rate = document.getElementById('hb-'+key+'-rate');
+            const last = document.getElementById('hb-'+key+'-last');
+            const card = document.getElementById('hb-'+key);
+            dot.style.background = colors[feed.status];
+            card.style.borderLeftColor = colors[feed.status];
+            rate.textContent = feed.rate + '/5m';
+            if (feed.last) {
+                const ago = Math.round((Date.now() - new Date(feed.last).getTime()) / 1000);
+                last.textContent = ago < 60 ? ago+'s ago' : Math.round(ago/60)+'m ago';
+            } else {
+                last.textContent = 'No data';
+            }
+        });
+        document.getElementById('hb-dbsize').textContent = d.db_size || '—';
+    }).catch(() => {});
+}
+updateHealth();
+setInterval(updateHealth, 15000);
+</script>
+{% endblock %}

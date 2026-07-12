@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ branding.product_name }} — Login</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<script>
+(function(){try{var t=localStorage.getItem('elb-theme')||'dark';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
+</script>
+{% if branding.has_favicon %}
+<link rel="icon" type="image/x-icon" href="/favicon.ico?v={{ branding.favicon_version }}">
+<link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('branding_asset', filename='favicon-32x32.png') }}?v={{ branding.favicon_version }}">
+{% endif %}
+<style>
+:root { --primary: {{ branding.color_primary }}; --primary-dark: {{ branding.color_primary_dark }}; --bg: {{ branding.color_bg_dark }}; --card: {{ branding.color_bg_card }}; --border: #243040; --text: #d0d8e0; --text-bright: #f0f4f8; --text-muted: #7a8a9a; --danger: {{ branding.color_danger }}; }
+html[data-theme="light"] { --bg: #e8edf2; --card: #ffffff; --border: #dbe2ea; --text: #2c3e50; --text-bright: #1a2634; --text-muted: #6b7a8a; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; transition: background 0.2s, color 0.2s; }
+.login-theme-toggle { position: fixed; top: 20px; right: 20px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; color: var(--text-muted); cursor: pointer; padding: 8px 12px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s; z-index: 10; }
+.login-theme-toggle:hover { color: var(--primary); border-color: var(--primary); }
+html[data-theme="light"] .login-card { box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+@media (max-width: 480px) {
+    .login-card { padding: 28px 20px; border-radius: 10px; }
+    .login-theme-toggle { top: 12px; right: 12px; padding: 6px 10px; font-size: 12px; }
+    .login-theme-toggle span { display: none; }
+    .login-brand img { max-width: 180px !important; }
+}
+.login-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 40px; width: 100%; max-width: 400px; }
+.login-brand { text-align: center; margin-bottom: 32px; }
+.login-brand i { font-size: 48px; color: var(--primary); margin-bottom: 12px; display: block; }
+.login-brand h1 { font-size: 24px; color: var(--text-bright); font-weight: 700; }
+.login-brand h1 span { color: var(--primary); }
+.login-brand p { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.form-control { width: 100%; padding: 10px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text-bright); font-size: 14px; outline: none; }
+.form-control:focus { border-color: var(--primary); }
+.btn-login { width: 100%; padding: 12px; background: var(--primary); color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+.btn-login:hover { background: #1880B8; }
+.alert { padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 13px; background: rgba(231,76,60,0.15); color: var(--danger); border: 1px solid rgba(231,76,60,0.3); }
+.peca-note { text-align: center; margin-top: 24px; font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+</style>
+</head>
+<body>
+<button class="login-theme-toggle" onclick="toggleTheme()" title="Toggle light/dark theme">
+    <i class="fas fa-moon" id="themeIcon"></i> <span id="themeLabel">Dark</span>
+</button>
+<div class="login-card">
+    <div class="login-brand">
+        {% if branding.has_logo %}
+        <img src="{{ url_for('branding_asset', filename='logo.png') }}?v={{ branding.logo_version }}" style="max-width:220px; max-height:90px; margin-bottom:12px;">
+        <p>{{ branding.tagline }}</p>
+        {% else %}
+        <i class="fas fa-shield-alt"></i>
+        <h1>{{ branding.product_name }}</h1>
+        <p>{{ branding.tagline }}</p>
+        {% endif %}
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <form method="POST" autocomplete="off">
+        <div class="form-group">
+            <label>Username</label>
+            <input type="text" name="username" class="form-control" placeholder="Enter username" required autofocus autocomplete="off">
+        </div>
+        <div class="form-group">
+            <label>Password</label>
+            <input type="password" name="password" class="form-control" placeholder="Enter password" required
+                   autocomplete="off" readonly
+                   onfocus="this.removeAttribute('readonly');">
+        </div>
+        <button type="submit" class="btn-login">
+            <i class="fas fa-sign-in-alt"></i> Sign In
+        </button>
+    </form>
+
+    <div class="peca-note">
+        <i class="fas fa-lock"></i> All access is logged and audited<br>
+        PECA 2016 Section 29 — Authorized Personnel Only
+    </div>
+</div>
+<script>
+function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    var icon = document.getElementById('themeIcon');
+    var label = document.getElementById('themeLabel');
+    var isLight = theme === 'light';
+    if (icon) icon.className = isLight ? 'fas fa-sun' : 'fas fa-moon';
+    if (label) label.textContent = isLight ? 'Light' : 'Dark';
+    try { localStorage.setItem('elb-theme', theme); } catch(e) {}
+}
+function toggleTheme() {
+    var current = document.documentElement.getAttribute('data-theme') || 'dark';
+    applyTheme(current === 'dark' ? 'light' : 'dark');
+}
+(function() {
+    var saved = 'dark';
+    try { saved = localStorage.getItem('elb-theme') || 'dark'; } catch(e) {}
+    applyTheme(saved);
+})();
+</script>
+</body>
+</html>

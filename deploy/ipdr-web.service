@@ -1,0 +1,15 @@
+[Unit]
+Description=IPDR web portal (gunicorn)
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=ipdr
+WorkingDirectory=/opt/ipdr
+EnvironmentFile=/opt/ipdr/.env
+ExecStart=/opt/ipdr/venv/bin/gunicorn --workers 4 --bind 127.0.0.1:8000 app:app
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}NAT Logs{% endblock %}
+{% block page_title %}<i class="fas fa-list-alt"></i> NAT PBA Logs{% endblock %}
+{% block content %}
+<div class="card">
+    <form method="GET" style="display:flex; gap:12px; align-items:end; flex-wrap:wrap;">
+        <div class="form-group" style="margin:0;"><label>Type</label><select name="type" class="form-control"><option value="">All</option><option value="PBA_ALLOC" {{ 'selected' if filters.type == 'PBA_ALLOC' }}>ALLOC</option><option value="PBA_RELEASE" {{ 'selected' if filters.type == 'PBA_RELEASE' }}>RELEASE</option><option value="PBA_INTERIM" {{ 'selected' if filters.type == 'PBA_INTERIM' }}>INTERIM</option></select></div>
+        <div class="form-group" style="margin:0;"><label>Subscriber IP</label><input type="text" name="subscriber" class="form-control mono" value="{{ filters.subscriber }}" placeholder="100.64.x.x"></div>
+        <div class="form-group" style="margin:0;"><label>Public IP</label><input type="text" name="public_ip" class="form-control mono" value="{{ filters.public_ip }}" placeholder="203.0.113.x"></div>
+        <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-filter"></i> Filter</button>
+    </form>
+</div>
+<div class="card">
+    <div class="card-header">{{ "{:,}".format(total_count) }} records</div>
+    <div style="overflow-x:auto;"><table>
+        <thead><tr><th>Time</th><th>Type</th><th>Subscriber</th><th>Public IP</th><th>Port Block</th><th>Used/Max</th><th>Pool</th></tr></thead>
+        <tbody>
+        {% for l in logs %}
+        <tr>
+            <td class="mono">{{ l.log_time.strftime('%Y-%m-%d %H:%M:%S') if l.log_time else '' }}</td>
+            <td>{% if l.log_type == 'PBA_ALLOC' %}<span class="badge badge-success">ALLOC</span>{% elif l.log_type == 'PBA_RELEASE' %}<span class="badge badge-danger">RELEASE</span>{% else %}<span class="badge badge-warning">{{ l.log_type }}</span>{% endif %}</td>
+            <td class="mono">{{ l.subscriber_ip }}</td>
+            <td class="mono">{{ l.public_ip }}</td>
+            <td class="mono">{{ l.port_block_start }}-{{ l.port_block_end }}</td>
+            <td>{{ l.blocks_used }}/{{ l.blocks_max }}</td>
+            <td>{{ l.nat_pool }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table></div>
+    <div class="pagination">
+        {% if page > 1 %}<a href="?page={{ page-1 }}&type={{ filters.type }}&subscriber={{ filters.subscriber }}&public_ip={{ filters.public_ip }}">&laquo; Prev</a>{% endif %}
+        <span class="current">Page {{ page }} of {{ total_pages }}</span>
+        {% if page < total_pages %}<a href="?page={{ page+1 }}&type={{ filters.type }}&subscriber={{ filters.subscriber }}&public_ip={{ filters.public_ip }}">Next &raquo;</a>{% endif %}
+    </div>
+</div>
+{% endblock %}

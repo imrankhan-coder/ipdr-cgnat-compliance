@@ -1,0 +1,8 @@
+[Unit]
+Description=IPDR analytics cache (slow tier: 1h/12h/24h/1w/1M)
+After=network.target postgresql.service
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=/opt/ipdr/.env
+ExecStart=/opt/ipdr/venv/bin/python /opt/ipdr/scripts/analytics_refresh.py --tier slow

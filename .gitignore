@@ -1,0 +1,50 @@
+# ---- SECRETS: never commit ----
+.env
+.env.*
+!.env.example
+*.key
+*_key
+*.pem
+*.crt
+secrets/
+credentials/
+*fernet*
+*.secret
+
+# ---- Runtime / data ----
+*.db
+*.sqlite
+*.sqlite3
+*.log
+logs/
+*.pid
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.bak
+*.bak-*
+.bak*
+
+# ---- DB dumps / captures (may contain subscriber PII) ----
+*.dump
+*.sql.gz
+*.pcap
+*.pcapng
+dumps/
+captures/
+exports/
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# ---- Build artifacts ----
+*.tar.gz
+dist/
+build/

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Subscriber Timeline{% endblock %}
+{% block page_title %}<i class="fas fa-history"></i> Subscriber Timeline{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">Complete Subscriber History</div>
+    <form method="POST">
+        <div class="form-row">
+            <div class="form-group">
+                <label>PPPoE Username *</label>
+                <input type="text" name="username" class="form-control" placeholder="subscriber-001" value="{{ form_data.get('username', '') }}" required>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Load Timeline</button>
+    </form>
+</div>
+
+{% if timeline is not none %}
+<div class="card">
+    <div class="card-header">{{ timeline|length }} session{{ 's' if timeline|length != 1 }} found</div>
+
+    {% for entry in timeline %}
+    {% set s = entry.session %}
+    <div class="result-box" style="margin-bottom:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <div>
+                <span style="font-size:18px; font-weight:700; color:var(--text-bright);">{{ s.username }}</span>
+                <span class="badge badge-{% if not s.session_stop %}success{% else %}info{% endif %}" style="margin-left:8px;">
+                    {{ 'ACTIVE' if not s.session_stop else 'ENDED' }}
+                </span>
+            </div>
+            <span style="font-size:12px; color:var(--text-muted);">Session #{{ loop.index }}</span>
+        </div>
+
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:10px; margin-bottom:12px;">
+            <div>
+                <div class="result-label">CGN IP</div>
+                <div class="result-value" style="font-size:14px;">{{ s.framed_ip }}</div>
+            </div>
+            <div>
+                <div class="result-label">MAC</div>
+                <div class="result-value" style="font-size:13px;">{{ s.calling_station_id|format_mac or 'N/A' }}</div>
+            </div>
+            <div>
+                <div class="result-label">VLAN</div>
+                <div class="result-value" style="font-size:14px;">{{ s.nas_port_id }}</div>
+            </div>
+            <div>
+                <div class="result-label">Start</div>
+                <div class="result-value" style="font-size:13px;">{{ s.session_start.strftime('%Y-%m-%d %H:%M:%S') if s.session_start else '' }}</div>
+            </div>
+            <div>
+                <div class="result-label">End</div>
+                <div class="result-value" style="font-size:13px;">{{ s.session_stop.strftime('%Y-%m-%d %H:%M:%S') if s.session_stop else 'ACTIVE' }}</div>
+            </div>
+            <div>
+                <div class="result-label">Duration</div>
+                <div class="result-value" style="font-size:14px;">{{ (s.session_duration // 3600)|string + 'h ' + ((s.session_duration % 3600) // 60)|string + 'm' if s.session_duration else '' }}</div>
+            </div>
+        </div>
+
+        {% if entry.nat_maps %}
+        <div style="margin-top:8px;">
+            <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:var(--text-muted); margin-bottom:6px;">
+                <i class="fas fa-exchange-alt"></i> NAT Port Block Mappings ({{ entry.nat_maps|length }})
+            </div>
+            <table style="font-size:12px;">
+                <thead><tr><th>Time</th><th>Type</th><th>Public IP</th><th>Port Block</th><th>Blocks Used</th></tr></thead>
+                <tbody>
+                {% for n in entry.nat_maps %}
+                <tr>
+                    <td class="mono">{{ n.log_time.strftime('%H:%M:%S') if n.log_time else '' }}</td>
+                    <td>
+                        {% if n.log_type == 'PBA_ALLOC' %}<span class="badge badge-success">ALLOC</span>
+                        {% elif n.log_type == 'PBA_RELEASE' %}<span class="badge badge-danger">RELEASE</span>
+                        {% else %}<span class="badge badge-warning">{{ n.log_type }}</span>{% endif %}
+                    </td>
+                    <td class="mono">{{ n.public_ip }}</td>
+                    <td class="mono">{{ n.port_block_start }}–{{ n.port_block_end }}</td>
+                    <td>{{ n.blocks_used }}/{{ n.blocks_max }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div style="font-size:12px; color:var(--text-muted); margin-top:8px;">
+            <i class="fas fa-info-circle"></i> No NAT mappings recorded during this session window.
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    {% if not timeline %}
+    <div class="alert alert-info">No sessions found for this username.</div>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

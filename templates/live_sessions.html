@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Live Sessions
+
+{% endblock %}
+{% block content %}
+<style>
+.elb-tabbar{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:12px;}
+.elb-tab{padding:8px 16px;cursor:pointer;border:none;background:none;color:var(--text-muted);font-size:13px;border-bottom:2px solid transparent;}
+.elb-tab.active{color:var(--primary);border-bottom-color:var(--primary);font-weight:600;}
+.elb-tabpanel{display:none;}
+.elb-tabpanel.active{display:block;}
+.badge-static{background:rgba(26,138,74,0.15);color:#1a8a4a;padding:2px 8px;border-radius:4px;font-size:11px;}
+.badge-dyn{background:rgba(32,160,224,0.12);color:var(--primary);padding:2px 8px;border-radius:4px;font-size:11px;}
+</style>
+<script>
+function elbLsTab(name){
+  document.querySelectorAll('.elb-tab').forEach(function(t){t.classList.toggle('active', t.dataset.tab===name);});
+  document.querySelectorAll('.elb-tabpanel').forEach(function(p){p.classList.toggle('active', p.dataset.panel===name);});
+}
+function elbRefreshDhcp(btn){
+  var old=btn.innerHTML; btn.innerHTML='<i class="fas fa-spinner fa-spin"></i> Polling...'; btn.disabled=true;
+  fetch('/live-sessions/refresh-dhcp',{method:'POST',headers:{'X-Requested-With':'fetch'}})
+   .then(function(r){return r.json();})
+   .then(function(d){ if(window.elbShowToast) elbShowToast(d.message,d.ok); setTimeout(function(){location.reload();}, d.ok?800:0); })
+   .catch(function(e){ if(window.elbShowToast) elbShowToast('Refresh error: '+e,false); })
+   .finally(function(){ btn.innerHTML=old; btn.disabled=false; });
+}
+document.addEventListener('DOMContentLoaded',function(){elbLsTab('pppoe');});
+</script>
+<!-- elb-ls-tabs -->
+<!-- elb-tabs-fixed -->
+<div class="page-header">
+    <h1><i class="fas fa-wifi"></i> Live Sessions</h1>
+    <p class="text-muted">Subscribers currently online, from the PPP session poller.</p>
+</div>
+
+<div class="peca-banner">
+    <i class="fas fa-shield-alt"></i>
+    PECA Section 29 Compliance — live subscriber session state (framed IP + device MAC).
+</div>
+
+<div class="stat-row" style="display:flex; gap:16px; margin:16px 0; flex-wrap:wrap;">
+    <div class="stat-card" style="flex:1; min-width:160px;">
+        <div class="stat-value">{{ '{:,}'.format(total) }}</div>
+        <div class="stat-label">Online now</div>
+    </div>
+    <div class="stat-card" style="flex:1; min-width:160px;">
+        <div class="stat-value">{{ shown }}</div>
+        <div class="stat-label">Shown{% if q %} (filtered){% endif %}</div>
+    </div>
+    <div class="stat-card" style="flex:2; min-width:220px;">
+        <div class="stat-value" style="font-size:15px;">
+            {% if last_poll %}{{ last_poll.strftime('%Y-%m-%d %H:%M:%S') }}{% else %}—{% endif %}
+        </div>
+        <div class="stat-label">Last poll{% if since %} · recording since {{ since.strftime('%Y-%m-%d %H:%M') }}{% endif %}</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+        <span><i class="fas fa-list"></i> Online subscribers</span>
+        <form method="GET" style="margin:0;">
+            <input type="text" name="q" value="{{ q }}" placeholder="username / IP / MAC"
+                   class="form-control" style="width:220px; display:inline-block;">
+            <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-search"></i></button>
+            {% if q %}<a href="{{ url_for('live_sessions') }}" class="btn btn-sm btn-outline">Clear</a>{% endif %}
+        </form>
+    </div>
+    <div class="card-body" style="overflow-x:auto;">
+        <div class="elb-tabbar">
+  <button class="elb-tab" data-tab="pppoe" onclick="elbLsTab('pppoe')"><i class="fas fa-user"></i> PPPoE ({{ total }})</button>
+  <button class="elb-tab" data-tab="dhcp-dyn" onclick="elbLsTab('dhcp-dyn')"><i class="fas fa-network-wired"></i> DHCP Dynamic ({{ dhcp_dyn_total if dhcp_dyn_total is defined else (dhcp_dyn|length if dhcp_dyn else 0) }})</button>
+  <button class="elb-tab" data-tab="dhcp-static" onclick="elbLsTab('dhcp-static')"><i class="fas fa-thumbtack"></i> DHCP Static ({{ dhcp_static_total if dhcp_static_total is defined else (dhcp_static|length if dhcp_static else 0) }})</button>
+  <button class="btn btn-sm btn-outline" style="margin-left:auto;" onclick="elbRefreshDhcp(this)"><i class="fas fa-sync"></i> Refresh DHCP</button>
+</div>
+<div class="elb-tabpanel" data-panel="pppoe">
+<!-- pager-on-top -->
+{% set pg = pg_ppp %}
+{% include '_pagination.html' with context %}
+
+<table class="data-table">
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Customer</th>
+                    <th>Framed IP</th>
+                    <th>Device MAC</th>
+                    <th>Service</th>
+                    <th>Online since</th>
+                    <th>Uptime</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in sessions %}
+                <tr>
+                    <td class="mono">{{ s.username }}</td>
+                    <td style="max-width:260px; font-size:12px;">
+                        {% if s.customer %}{{ s.customer[:60] }}{% if s.phone %}<br><span class="mono">&#9742; {{ s.phone }}</span>{% endif %}
+                        {% else %}<span class="text-muted">—</span>{% endif %}
+                    </td>
+                    <td class="mono">{{ s.framed_ip or '—' }}</td>
+                    <td class="mono">{{ s.caller_id or '—' }}</td>
+                    <td>{{ s.ppp_service or '—' }}</td>
+                    <td>{{ s.session_start.strftime('%Y-%m-%d %H:%M') if s.session_start else '—' }}</td>
+                    <td>
+                        {% if s.uptime_seconds %}
+                            {% set u = s.uptime_seconds %}
+                            {{ '%dd %dh %dm'|format(u//86400, (u%86400)//3600, (u%3600)//60) }}
+                        {% else %}—{% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="text-muted" style="text-align:center; padding:24px;">
+                    No online sessions{% if q %} match "{{ q }}"{% endif %}.
+                </td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+</div>
+<div class="elb-tabpanel" data-panel="dhcp-dyn">
+  {% if dhcp_dyn %}
+  <table class="data-table"><thead><tr><th>MAC</th><th>Device / Host</th><th>Model / Vendor</th><th>Current IP</th><th>Comment</th><th>Server</th><th>Last Seen</th></tr></thead><tbody>
+  {% for d in dhcp_dyn %}
+  <tr><td class="mono"><strong>{{ d.mac }}</strong></td><td>{{ d.hostname or '—' }}</td><td style="font-size:12px;">{{ d.class_id or '—' }}</td><td class="mono">{{ d.ip or '—' }} <span class="badge-dyn">dyn</span></td><td style="font-size:12px;">{{ d.comment or '—' }}</td><td>{{ d.server or '—' }}</td><td class="mono" style="font-size:11px;">{{ d.last_seen }}</td></tr>
+  {% endfor %}
+  </tbody></table>
+  {% else %}<p class="text-muted">No dynamic DHCP leases. Click "Refresh DHCP" to poll now.</p>{% endif %}
+</div>
+<div class="elb-tabpanel" data-panel="dhcp-static">
+  {% if dhcp_static %}
+  <table class="data-table"><thead><tr><th>MAC</th><th>Device / Host</th><th>Model / Vendor</th><th>Static IP</th><th>Comment</th><th>Server</th><th>Last Seen</th></tr></thead><tbody>
+  {% for d in dhcp_static %}
+  <tr><td class="mono"><strong>{{ d.mac }}</strong></td><td>{{ d.hostname or '—' }}</td><td style="font-size:12px;">{{ d.class_id or '—' }}</td><td class="mono">{{ d.ip or '—' }} <span class="badge-static">static</span></td><td style="font-size:12px;">{{ d.comment or '—' }}</td><td>{{ d.server or '—' }}</td><td class="mono" style="font-size:11px;">{{ d.last_seen }}</td></tr>
+  {% endfor %}
+  </tbody></table>
+  {% else %}<p class="text-muted">No static DHCP leases. Click "Refresh DHCP" to poll now.</p>{% endif %}
+</div>
+
+    </div>
+</div>
+{% endblock %}

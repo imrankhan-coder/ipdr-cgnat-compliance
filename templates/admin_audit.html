@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Audit Log{% endblock %}
+{% block page_title %}<i class="fas fa-clipboard-list"></i> Audit Log{% endblock %}
+{% block content %}
+<div class="card">
+    <form method="GET" style="display:flex; gap:12px; align-items:end; flex-wrap:wrap;">
+        <div class="form-group" style="margin:0;"><label>Action</label><select name="action" class="form-control"><option value="">All</option>
+            {% for a in ['LOGIN','LOGOUT','LOGIN_FAILED','LEA_QUERY','USERNAME_QUERY','CGN_LOOKUP','EXPORT_REPORT','USER_CREATED','PASSWORD_RESET','PASSWORD_CHANGE','DATA_PURGE'] %}
+            <option value="{{ a }}" {{ 'selected' if filters.action == a }}>{{ a }}</option>{% endfor %}</select></div>
+        <div class="form-group" style="margin:0;"><label>User</label><input type="text" name="user" class="form-control" value="{{ filters.user }}"></div>
+        <div class="form-group" style="margin:0;"><label>From</label><input type="date" name="date_from" class="form-control" value="{{ filters.date_from }}"></div>
+        <div class="form-group" style="margin:0;"><label>To</label><input type="date" name="date_to" class="form-control" value="{{ filters.date_to }}"></div>
+        <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-filter"></i> Filter</button>
+    </form>
+</div>
+<div class="card">
+    <div class="card-header">{{ "{:,}".format(total_count) }} audit entries</div>
+    <div style="overflow-x:auto;"><table>
+        <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Detail</th><th>IP</th></tr></thead>
+        <tbody>
+        {% for l in logs %}
+        <tr>
+            <td class="mono">{{ l.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+            <td>{{ l.username }}</td>
+            <td><span class="badge badge-{% if 'FAIL' in l.action or 'PURGE' in l.action %}danger{% elif 'LEA' in l.action or 'QUERY' in l.action %}warning{% else %}info{% endif %}">{{ l.action }}</span></td>
+            <td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ l.detail }}</td>
+            <td class="mono">{{ l.ip_address }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table></div>
+    <div class="pagination">
+        {% if page > 1 %}<a href="?page={{ page-1 }}&action={{ filters.action }}&user={{ filters.user }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}">&laquo;</a>{% endif %}
+        <span class="current">{{ page }}/{{ total_pages }}</span>
+        {% if page < total_pages %}<a href="?page={{ page+1 }}&action={{ filters.action }}&user={{ filters.user }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}">&raquo;</a>{% endif %}
+    </div>
+</div>
+{% endblock %}

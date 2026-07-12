@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}{{ branding.product_name }}{% endblock %} — {{ branding.tagline }}</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<script>
+// Apply saved theme immediately (before render) to avoid flash
+(function(){try{var t=localStorage.getItem('elb-theme')||'dark';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
+</script>
+{% if branding.has_favicon %}
+{% set fv = branding.favicon_version %}
+<link rel="icon" type="image/x-icon" href="/favicon.ico?v={{ fv }}">
+<link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('branding_asset', filename='favicon-16x16.png') }}?v={{ fv }}">
+<link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('branding_asset', filename='favicon-32x32.png') }}?v={{ fv }}">
+<link rel="icon" type="image/png" sizes="48x48" href="{{ url_for('branding_asset', filename='favicon-48x48.png') }}?v={{ fv }}">
+<link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('branding_asset', filename='apple-touch-icon.png') }}?v={{ fv }}">
+<link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('branding_asset', filename='android-chrome-192x192.png') }}?v={{ fv }}">
+<link rel="icon" type="image/png" sizes="512x512" href="{{ url_for('branding_asset', filename='android-chrome-512x512.png') }}?v={{ fv }}">
+{% endif %}
+<style>
+:root {
+    --primary: {{ branding.color_primary }};
+    --primary-dark: {{ branding.color_primary_dark }};
+    --bg-dark: {{ branding.color_bg_dark }};
+    --bg-sidebar: {{ branding.color_bg_sidebar }};
+    --bg-card: {{ branding.color_bg_card }};
+    --bg-body: {{ branding.color_bg_body }};
+    --text: #d0d8e0;
+    --text-muted: #7a8a9a;
+    --text-bright: #f0f4f8;
+    --border: #243040;
+    --success: {{ branding.color_success }};
+    --warning: {{ branding.color_warning }};
+    --danger: {{ branding.color_danger }};
+    --info: #3498db;
+}
+/* Light theme — overrides neutrals/backgrounds, keeps branded accent colors */
+html[data-theme="light"] {
+    --bg-dark: #e8edf2;
+    --bg-sidebar: #ffffff;
+    --bg-card: #ffffff;
+    --bg-body: #f4f6f9;
+    --text: #2c3e50;
+    --text-muted: #6b7a8a;
+    --text-bright: #1a2634;
+    --border: #dbe2ea;
+}
+html[data-theme="light"] th { background: rgba(0,0,0,0.03); }
+html[data-theme="light"] tr:hover td { background: rgba(0,0,0,0.02); }
+html[data-theme="light"] .nav-link:hover { background: rgba(0,0,0,0.04); }
+html[data-theme="light"] .sidebar { box-shadow: 1px 0 3px rgba(0,0,0,0.06); }
+html[data-theme="light"] .card { box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-body); color: var(--text); display: flex; min-height: 100vh; font-size: 14px; transition: background 0.2s, color 0.2s; }
+
+/* Theme toggle button */
+.theme-toggle { background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--text-muted); cursor: pointer; padding: 5px 10px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s; }
+.theme-toggle:hover { color: var(--primary); border-color: var(--primary); }
+
+/* Collapsible Settings submenu */
+.nav-settings-toggle:hover { color: var(--text-bright); }
+.settings-submenu { max-height: 0; overflow: hidden; transition: max-height 0.25s ease; }
+.settings-submenu.open { max-height: 400px; }
+
+/* Sidebar */
+.sidebar { width: 240px; background: var(--bg-sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: fixed; top: 0; left: 0; height: 100vh; z-index: 100; }
+.sidebar-brand { padding: 20px 16px; border-bottom: 1px solid var(--border); }
+.sidebar-brand h2 { color: var(--primary); font-size: 18px; font-weight: 700; }
+.sidebar-brand small { color: var(--text-muted); font-size: 11px; display: block; margin-top: 2px; }
+.sidebar-nav { flex: 1; padding: 12px 0; overflow-y: auto; }
+.nav-section { padding: 8px 16px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-muted); font-weight: 600; }
+.nav-link { display: flex; align-items: center; gap: 10px; padding: 9px 16px; color: var(--text); text-decoration: none; transition: all 0.15s; font-size: 13px; border-left: 3px solid transparent; }
+.nav-link:hover { background: rgba(32, 160, 224, 0.08); color: var(--text-bright); }
+.nav-link.active { background: rgba(32, 160, 224, 0.12); color: var(--primary); border-left-color: var(--primary); }
+.nav-link i { width: 18px; text-align: center; font-size: 14px; }
+.sidebar-footer { padding: 12px 16px; border-top: 1px solid var(--border); font-size: 12px; }
+.sidebar-footer a { color: var(--text-muted); text-decoration: none; }
+.sidebar-footer a:hover { color: var(--danger); }
+
+/* Main content */
+.main { margin-left: 240px; flex: 1; display: flex; flex-direction: column; min-height: 100vh; }
+.topbar { padding: 12px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--bg-sidebar); position: sticky; top: 0; z-index: 90; }
+.topbar h1 { font-size: 16px; font-weight: 600; color: var(--text-bright); }
+.topbar-right { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--text-muted); }
+.topbar-datetime { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.topbar-divider { width: 1px; height: 20px; background: var(--border); }
+
+/* Mini metric widgets in header */
+.mini-metric { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 9px; border: 1px solid var(--border); border-radius: 6px; font-variant-numeric: tabular-nums; }
+.mini-metric i { font-size: 11px; opacity: 0.7; }
+.mini-metric .mm-val { font-weight: 600; color: var(--text-bright); }
+.mini-metric .mm-bar { display: inline-block; vertical-align: middle; width: 64px; height: 7px; background: var(--bg-dark); border-radius: 4px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--border); } /* mm-bar-bigger */
+.mini-metric .mm-fill { display:block; height: 100%; background: var(--success); border-radius: 4px; transition: width 0.4s, background 0.4s, box-shadow 0.4s; }
+
+.app-footer { padding: 12px 24px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-muted); text-align: center; background: var(--bg-sidebar); position: sticky; bottom: 0; z-index: 90; }
+.content { padding: 24px; flex: 1; }
+
+/* Cards */
+.card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+.card-header { font-size: 14px; font-weight: 600; color: var(--text-bright); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px; }
+
+/* Stat cards */
+.stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+.stat-card .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); margin-bottom: 4px; }
+.stat-card .stat-value { font-size: 28px; font-weight: 700; color: var(--text-bright); }
+.stat-card .stat-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.stat-card.primary { border-left: 3px solid var(--primary); }
+.stat-card.success { border-left: 3px solid var(--success); }
+.stat-card.warning { border-left: 3px solid var(--warning); }
+.stat-card.danger { border-left: 3px solid var(--danger); }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; padding: 10px 12px; background: rgba(32,160,224,0.06); border-bottom: 1px solid var(--border); color: var(--text-muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
+td { padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: top; }
+tr:hover td { background: rgba(32,160,224,0.04); }
+
+/* Forms */
+.form-group { margin-bottom: 14px; }
+.form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.form-control { width: 100%; padding: 8px 12px; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 6px; color: var(--text-bright); font-size: 13px; outline: none; transition: border-color 0.2s; }
+.form-control:focus { border-color: var(--primary); }
+select.form-control { cursor: pointer; }
+textarea.form-control { min-height: 80px; resize: vertical; }
+.form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; text-decoration: none; transition: all 0.15s; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-success { background: var(--success); color: #fff; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-warning { background: var(--warning); color: #222; }
+.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+.btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+
+/* Alerts */
+.alert { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 13px; }
+.alert-success { background: rgba(46,204,113,0.15); color: var(--success); border: 1px solid rgba(46,204,113,0.3); }
+.alert-danger { background: rgba(231,76,60,0.15); color: var(--danger); border: 1px solid rgba(231,76,60,0.3); }
+.alert-warning { background: rgba(241,196,15,0.15); color: var(--warning); border: 1px solid rgba(241,196,15,0.3); }
+.alert-info { background: rgba(52,152,219,0.15); color: var(--info); border: 1px solid rgba(52,152,219,0.3); }
+
+/* Badges */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.badge-success { background: rgba(46,204,113,0.2); color: var(--success); }
+.badge-danger { background: rgba(231,76,60,0.2); color: var(--danger); }
+.badge-warning { background: rgba(241,196,15,0.2); color: var(--warning); }
+.badge-info { background: rgba(52,152,219,0.2); color: var(--info); }
+.badge-primary { background: rgba(32,160,224,0.2); color: var(--primary); }
+
+/* Pagination */
+.pagination { display: flex; gap: 4px; margin-top: 16px; }
+.pagination a, .pagination span { padding: 6px 12px; border-radius: 4px; font-size: 13px; text-decoration: none; }
+.pagination a { background: var(--bg-card); color: var(--text); border: 1px solid var(--border); }
+.pagination a:hover { border-color: var(--primary); color: var(--primary); }
+.pagination span.current { background: var(--primary); color: #fff; }
+
+/* Result highlight */
+.result-box { background: var(--bg-dark); border: 1px solid var(--primary); border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+.result-box .result-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.result-box .result-value { font-size: 16px; color: var(--text-bright); font-weight: 600; font-family: 'Courier New', monospace; }
+
+/* Mono */
+.mono { font-family: 'Courier New', monospace; font-size: 12px; }
+
+/* PECA compliance banner */
+.peca-banner { background: rgba(231,76,60,0.1); border: 1px solid rgba(231,76,60,0.3); border-radius: 6px; padding: 10px 16px; margin-bottom: 16px; font-size: 12px; color: var(--danger); }
+
+/* Sidebar logo image */
+.sidebar-logo-img { max-width: 100%; max-height: 60px; height: auto; display: block; }
+.sidebar-brand .brand-text-fallback { color: var(--primary); font-size: 18px; font-weight: 700; }
+
+/* Mobile hamburger — hidden on desktop */
+.mobile-header { display: none; }
+.sidebar-overlay { display: none; }
+
+@media (max-width: 768px) {
+    /* Mobile top bar with hamburger */
+    .mobile-header {
+        display: flex; align-items: center; justify-content: space-between;
+        position: fixed; top: 0; left: 0; right: 0; height: 56px; z-index: 200;
+        background: var(--bg-sidebar); border-bottom: 1px solid var(--border);
+        padding: 0 16px;
+    }
+    .mobile-header .hamburger {
+        background: none; border: none; color: var(--text-bright); font-size: 22px;
+        cursor: pointer; padding: 8px; line-height: 1;
+    }
+    .mobile-header .mobile-brand { color: var(--primary); font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+    .mobile-header .mobile-brand img { max-height: 32px; width: auto; }
+
+    /* Sidebar slides in from left */
+    .sidebar {
+        transform: translateX(-100%);
+        transition: transform 0.25s ease;
+        width: 260px; z-index: 300;
+    }
+    .sidebar.open { transform: translateX(0); }
+
+    /* Dark overlay behind open sidebar */
+    .sidebar-overlay {
+        display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+        z-index: 250; opacity: 0; pointer-events: none; transition: opacity 0.25s;
+    }
+    .sidebar-overlay.show { opacity: 1; pointer-events: auto; }
+
+    /* Main content shifts down for mobile header, no left margin */
+    .main { margin-left: 0; padding-top: 56px; }
+    .topbar { display: none; }  /* mobile header replaces it */
+
+    /* Responsive layout fixes */
+    .form-row { grid-template-columns: 1fr !important; }
+    .card-grid { grid-template-columns: 1fr 1fr; }
+    .content { padding: 16px; }
+    .card { padding: 14px; }
+
+    /* Two-column dashboard/analytics sections stack */
+    [style*="grid-template-columns:1fr 1fr"],
+    [style*="grid-template-columns: 1fr 1fr"] { grid-template-columns: 1fr !important; }
+
+    /* Tables scroll horizontally instead of breaking layout */
+    .card table { min-width: 500px; }
+    .content > .card > div[style*="overflow"] { -webkit-overflow-scrolling: touch; }
+
+    /* Stat values smaller on mobile */
+    .stat-card .stat-value { font-size: 22px; }
+
+    /* Health bar grid stacks to 2 cols */
+    #health-bar { grid-template-columns: 1fr 1fr !important; }
+}
+
+@media (max-width: 480px) {
+    .card-grid { grid-template-columns: 1fr; }
+    #health-bar { grid-template-columns: 1fr !important; }
+    .mobile-header .mobile-brand span { display: none; }  /* logo only on tiny screens */
+}
+</style>
+</head>
+<body>
+
+<!-- Mobile header (hamburger) — only visible on small screens -->
+<div class="mobile-header">
+    <button class="hamburger" onclick="toggleSidebar()" aria-label="Menu"><i class="fas fa-bars"></i></button>
+    <div class="mobile-brand">
+        {% if branding.has_logo %}
+        <img src="{{ url_for('branding_asset', filename='logo.png') }}?v={{ branding.logo_version }}" alt="{{ branding.product_name }}">
+        {% endif %}
+        <span>{{ branding.product_name }}</span>
+    </div>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" style="padding:5px 8px;">
+        <i class="fas fa-moon" id="themeIconMobile"></i>
+    </button>
+</div>
+
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+<aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+        {% if branding.has_logo %}
+        <img class="sidebar-logo-img" src="{{ url_for('branding_asset', filename='logo.png') }}?v={{ branding.logo_version }}" alt="{{ branding.product_name }}">
+        <small>{{ branding.tagline }}</small>
+        {% else %}
+        <h2 class="brand-text-fallback"><i class="fas fa-shield-alt"></i> {{ branding.product_name }}</h2>
+        <small>{{ branding.tagline }}</small>
+        {% endif %}
+    </div>
+    <nav class="sidebar-nav">
+        <div class="nav-section">Overview</div>
+        <a href="{{ url_for('dashboard') }}" class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}">
+            <i class="fas fa-tachometer-alt"></i> Dashboard
+        </a>
+        <a href="{{ url_for('analytics') }}" class="nav-link {% if request.endpoint == 'analytics' %}active{% endif %}">
+            <i class="fas fa-chart-line"></i> Analytics
+        </a>
+
+        <!-- lea-regrouped -->
+        <div class="nav-section">LEA Compliance</div>
+        <a href="{{ url_for('lea_query') }}" class="nav-link {% if request.endpoint == 'lea_query' %}active{% endif %}">
+            <i class="fas fa-search"></i> LEA Query
+        </a>
+        <a href="{{ url_for('tuple_lookup') }}" class="nav-link {% if request.endpoint == 'tuple_lookup' %}active{% endif %}">
+            <i class="fas fa-crosshairs"></i> 5-Tuple Lookup
+        </a>
+        <a href="{{ url_for('paste_request') }}" class="nav-link {% if request.endpoint == 'paste_request' %}active{% endif %}">
+            <i class="fas fa-paste"></i> Paste Request
+        </a>
+        <a href="{{ url_for('cgn_lookup') }}" class="nav-link {% if request.endpoint == 'cgn_lookup' %}active{% endif %}">
+            <i class="fas fa-network-wired"></i> CGN IP Lookup
+        </a>
+        <a href="{{ url_for('dest_lookup') }}" class="nav-link {% if request.endpoint == 'dest_lookup' %}active{% endif %}">
+            <i class="fas fa-bullseye"></i> Destination Lookup
+        </a>
+        <a href="{{ url_for('username_query') }}" class="nav-link {% if request.endpoint == 'username_query' %}active{% endif %}">
+            <i class="fas fa-user-tag"></i> Username Lookup
+        </a>
+        <a href="{{ url_for('bulk_query') }}" class="nav-link {% if request.endpoint == 'bulk_query' %}active{% endif %}">
+            <i class="fas fa-file-upload"></i> Bulk IP Query
+        </a>
+        <div class="nav-section">Monitoring</div>
+        {% if box_engine == 'mikrotik' %}
+        <a href="{{ url_for('live_sessions') }}" class="nav-link {% if request.endpoint == 'live_sessions' %}active{% endif %}">
+            <i class="fas fa-wifi"></i> Live Sessions
+        </a>
+        {% endif %}
+        <a href="{{ url_for('subscriber_timeline') }}" class="nav-link {% if request.endpoint == 'subscriber_timeline' %}active{% endif %}">
+            <i class="fas fa-history"></i> Subscriber Timeline
+        </a>
+
+        <div class="nav-section">Data</div>
+        {% if box_engine != 'mikrotik' %}
+        <a href="{{ url_for('nat_logs_view') }}" class="nav-link {% if request.endpoint == 'nat_logs_view' %}active{% endif %}">
+            <i class="fas fa-list-alt"></i> NAT Logs
+        </a>
+        {% endif %}
+        <a href="{{ url_for('flow_logs_view') }}" class="nav-link {% if request.endpoint == 'flow_logs_view' %}active{% endif %}">
+            <i class="fas fa-exchange-alt"></i> {{ 'Translations' if box_engine == 'mikrotik' else 'Flow Logs' }}
+        </a>
+        {% if box_engine != 'mikrotik' %}
+        <a href="{{ url_for('radius_sessions') }}" class="nav-link {% if request.endpoint == 'radius_sessions' %}active{% endif %}">
+            <i class="fas fa-broadcast-tower"></i> RADIUS Sessions
+        </a>
+        {% endif %}
+        <a href="{{ url_for('nat_pool_status') }}" class="nav-link {% if request.endpoint == 'nat_pool_status' %}active{% endif %}">
+            <i class="fas fa-chart-pie"></i> NAT Pool Status
+        </a>
+
+        {% if current_role == 'admin' %}
+        {% set in_settings = request.endpoint in ['admin_users','nas_devices','branding_settings','admin_audit','admin_system','admin_retention'] %}
+        <div class="nav-section nav-settings-toggle" onclick="toggleSettings()" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; user-select:none;">
+            <span><i class="fas fa-cog" style="margin-right:6px;"></i> Settings</span>
+            <i class="fas fa-chevron-down" id="settingsChevron" style="font-size:9px; transition:transform 0.2s; {% if in_settings %}transform:rotate(180deg);{% endif %}"></i>
+        </div>
+        <div id="settingsSubmenu" class="settings-submenu {% if in_settings %}open{% endif %}">
+            <a href="{{ url_for('admin_users') }}" class="nav-link {% if request.endpoint == 'admin_users' %}active{% endif %}">
+                <i class="fas fa-users-cog"></i> User Management
+            </a>
+            <a href="{{ url_for('nas_devices') }}" class="nav-link {% if request.endpoint == 'nas_devices' %}active{% endif %}">
+                <i class="fas fa-network-wired"></i> NAS Devices
+            </a>
+            <a href="{{ url_for('branding_settings') }}" class="nav-link {% if request.endpoint == 'branding_settings' %}active{% endif %}">
+                <i class="fas fa-palette"></i> Branding
+            </a>
+            <a href="{{ url_for('admin_audit') }}" class="nav-link {% if request.endpoint == 'admin_audit' %}active{% endif %}">
+                <i class="fas fa-clipboard-list"></i> Audit Log
+            </a>
+            <a href="{{ url_for('admin_system') }}" class="nav-link {% if request.endpoint == 'admin_system' %}active{% endif %}">
+                <i class="fas fa-server"></i> System Status
+            </a>
+            <a href="{{ url_for('admin_retention') }}" class="nav-link {% if request.endpoint == 'admin_retention' %}active{% endif %}">
+                <i class="fas fa-database"></i> Data Retention
+            </a>
+        </div>
+        {% endif %}
+    </nav>
+    <div class="sidebar-footer">
+        <i class="fas fa-user"></i> {{ current_user }} ({{ current_role }})
+        <br><a href="{{ url_for('change_password') }}"><i class="fas fa-key"></i> Password</a>
+         &middot; <a href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt"></i> Logout</a>
+    </div>
+</aside>
+
+<div class="main">
+    <div class="topbar">
+        <h1>{% block page_title %}Dashboard{% endblock %}</h1>
+        <div class="topbar-right">
+            {% if box_engine == 'mikrotik' and nas_list and nas_list|length > 1 %}
+            <span class="nas-scope" title="Per-device scope" style="display:inline-flex; align-items:center; gap:6px;">
+                <i class="fas fa-server" style="color:var(--text-muted); font-size:12px;"></i>
+                <select id="nas-scope-select" onchange="if(this.value){window.location.href=this.value;}"
+                        class="theme-toggle" style="padding:4px 8px; max-width:180px;">
+                    <option value="{{ url_for('set_nas', nas='all') }}" {% if not sel_nas %}selected{% endif %}>All Devices (fleet)</option>
+                    {% for n in nas_list %}
+                    <option value="{{ url_for('set_nas', nas=n.id) }}" {% if sel_nas == n.id %}selected{% endif %}>{{ n.name }}</option>
+                    {% endfor %}
+                </select>
+            </span>
+            <span class="topbar-divider"></span>
+            {% endif %}
+            {% if current_role == 'admin' %}
+            <span class="mini-metric" title="CPU usage">
+                <i class="fas fa-microchip"></i>
+                <span class="mm-bar"><span class="mm-fill" id="mmCpuFill" style="width:0%"></span></span>
+                <span class="mm-val" id="mmCpu">—</span>
+            </span>
+            <span class="mini-metric" title="Memory usage">
+                <i class="fas fa-memory"></i>
+                <span class="mm-bar"><span class="mm-fill" id="mmRamFill" style="width:0%"></span></span>
+                <span class="mm-val" id="mmRam">—</span>
+            </span>
+            <span class="topbar-divider"></span>
+            {% endif %}
+            <span class="topbar-datetime" id="elbTopClock">{{ now.strftime('%d %b %Y · %H:%M') }} PKT</span>
+            <span class="topbar-divider"></span>
+            <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark theme">
+                <i class="fas fa-moon" id="themeIcon"></i> <span id="themeLabel">Dark</span>
+            </button>
+        </div>
+    </div>
+    <div class="content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </div>
+    <div class="app-footer">
+        &copy; {{ now.year }} {{ branding.company_name }}. All rights reserved.
+        &nbsp;·&nbsp; {{ branding.product_name }} v{{ app_version }}
+    </div>
+</div>
+
+{% block scripts %}{% endblock %}
+<script>
+function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('open');
+    document.getElementById('sidebarOverlay').classList.toggle('show');
+}
+// Close sidebar when a nav link is tapped (mobile)
+document.querySelectorAll('.sidebar .nav-link').forEach(function(link) {
+    link.addEventListener('click', function() {
+        if (window.innerWidth <= 768) {
+            document.getElementById('sidebar').classList.remove('open');
+            document.getElementById('sidebarOverlay').classList.remove('show');
+        }
+    });
+});
+
+// Collapsible Settings submenu
+function toggleSettings() {
+    var menu = document.getElementById('settingsSubmenu');
+    var chevron = document.getElementById('settingsChevron');
+    if (!menu) return;
+    var isOpen = menu.classList.toggle('open');
+    if (chevron) chevron.style.transform = isOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+}
+
+// Theme toggle with persistence
+function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    var icon = document.getElementById('themeIcon');
+    var iconM = document.getElementById('themeIconMobile');
+    var label = document.getElementById('themeLabel');
+    var isLight = theme === 'light';
+    if (icon) icon.className = isLight ? 'fas fa-sun' : 'fas fa-moon';
+    if (iconM) iconM.className = isLight ? 'fas fa-sun' : 'fas fa-moon';
+    if (label) label.textContent = isLight ? 'Light' : 'Dark';
+    try { localStorage.setItem('elb-theme', theme); } catch(e) {}
+}
+function toggleTheme() {
+    var current = document.documentElement.getAttribute('data-theme') || 'dark';
+    applyTheme(current === 'dark' ? 'light' : 'dark');
+}
+// Restore saved theme on load
+(function() {
+    var saved = 'dark';
+    try { saved = localStorage.getItem('elb-theme') || 'dark'; } catch(e) {}
+    applyTheme(saved);
+})();
+
+// Mini header metrics (admin only)
+(function() {
+    var cpuEl = document.getElementById('mmCpu');
+    if (!cpuEl) return;  // not admin
+    function pct2color(p) {  // elbRampColor-topbar: smooth green->amber->red
+        p = Math.max(0, Math.min(100, p || 0));
+        var hue = 120 - (p * 1.2); if (hue < 0) hue = 0;  // 0%=green(120) -> 100%=red(0)
+        return 'hsl(' + hue + ',70%,45%)';
+    }
+    function poll() {
+        fetch('/api/system-metrics').then(function(r){return r.json();}).then(function(d){
+            if (d.error || !d.cpu) return;
+            var c = d.cpu.cpu_pct, m = d.cpu.ram_pct;
+            document.getElementById('mmCpu').textContent = c + '%';
+            document.getElementById('mmRam').textContent = m + '%';
+            var cf = document.getElementById('mmCpuFill'), rf = document.getElementById('mmRamFill');
+            // minfill-floor: guarantee a visible colored segment even at ~1%
+            // (a true 0.8% fill is sub-pixel). Color ramps by the REAL level.
+            var cCol = pct2color(c), mCol = pct2color(m);
+            var cW = Math.max(12, Math.min(c,100)), mW = Math.max(12, Math.min(m,100));
+            cf.style.width = cW + '%'; cf.style.background = cCol;
+            cf.style.boxShadow = '0 0 6px ' + cCol;
+            rf.style.width = mW + '%'; rf.style.background = mCol;
+            rf.style.boxShadow = '0 0 6px ' + mCol;
+        }).catch(function(){});
+    }
+    poll();
+    setInterval(poll, 15000);
+})();
+// live topbar clock (ticks every second; local time)
+(function(){
+    var el = document.getElementById('elbTopClock');
+    if (!el) return;
+    function tick(){
+        // force PKT (Asia/Karachi) regardless of the browser's timezone
+        var d = new Date();
+        var parts = new Intl.DateTimeFormat('en-GB', {
+            timeZone: 'Asia/Karachi', day:'2-digit', month:'short', year:'numeric',
+            hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
+        }).formatToParts(d);
+        var p = {}; parts.forEach(function(x){ p[x.type] = x.value; });
+        el.textContent = p.day + ' ' + p.month + ' ' + p.year + ' \u00b7 '
+                       + p.hour + ':' + p.minute + ':' + p.second + ' PKT';
+    }
+    tick(); setInterval(tick, 1000);
+})();
+</script>
+<div id="elb-toast" style="position:fixed; top:20px; left:50%; transform:translateX(-50%);
+     z-index:99999; display:none; min-width:280px; max-width:560px; padding:12px 18px;
+     border-radius:8px; font-size:14px; box-shadow:0 4px 20px rgba(0,0,0,0.25);
+     color:#fff; text-align:center;"></div>
+<script>
+function elbShowToast(msg, ok){
+    var t=document.getElementById('elb-toast');
+    if(!t) return;
+    t.textContent=msg;
+    t.style.background = ok ? '#1a8a4a' : '#c0392b';
+    t.style.display='block';
+    clearTimeout(window._elbToastT);
+    window._elbToastT=setTimeout(function(){t.style.display='none';}, ok?5000:9000);
+}
+function elbApiTest(btn, url, name){
+    var icon=btn.querySelector('i');
+    var old=icon.className; icon.className='fas fa-spinner fa-spin'; btn.disabled=true;
+    fetch(url, {method:'POST', headers:{'X-Requested-With':'fetch'}})
+      .then(function(r){return r.json();})
+      .then(function(d){ elbShowToast(d.message, d.ok); })
+      .catch(function(e){ elbShowToast((name||'API')+': test error — '+e, false); })
+      .finally(function(){ icon.className=old; btn.disabled=false; });
+}
+</script>
+</body>
+</html>

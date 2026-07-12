@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Flow Logs{% endblock %}
+{% block page_title %}<i class="fas fa-exchange-alt"></i> Flow Logs — Source → Destination{% endblock %}
+
+{% block content %}
+<div class="card">
+    <form method="GET" style="display:flex; gap:12px; align-items:end; flex-wrap:wrap;">
+        <div class="form-group" style="margin:0;">
+            <label>Source IP (CGN)</label>
+            <input type="text" name="src_ip" class="form-control mono" value="{{ filters.src_ip }}" placeholder="100.64.x.x">
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label>Destination IP</label>
+            <input type="text" name="dst_ip" class="form-control mono" value="{{ filters.dst_ip }}" placeholder="142.250.x.x">
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label>Dst Port</label>
+            <input type="number" name="dst_port" class="form-control mono" value="{{ filters.dst_port }}" placeholder="443" style="width:100px;">
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label>Protocol</label>
+            <select name="protocol" class="form-control">
+                <option value="">All</option>
+                <option value="tcp" {{ 'selected' if filters.protocol == 'tcp' }}>TCP</option>
+                <option value="udp" {{ 'selected' if filters.protocol == 'udp' }}>UDP</option>
+                <option value="icmp" {{ 'selected' if filters.protocol == 'icmp' }}>ICMP</option>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-filter"></i> Filter</button>
+        {% if filters.src_ip or filters.dst_ip or filters.dst_port or filters.protocol %}
+        <a href="{{ url_for('flow_logs_view') }}" class="btn btn-outline btn-sm"><i class="fas fa-times"></i> Clear</a>
+        {% endif %}
+    </form>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <span>{{ "{:,}".format(total_count) }} flow records {% if filters.src_ip or filters.dst_ip %}(filtered){% endif %}</span>
+        <span style="font-size:12px; color:var(--text-muted);">Showing per-flow NAT RULE_MATCH records with subscriber correlation</span>
+    </div>
+    <div style="overflow-x:auto;">
+    <table>
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Username</th>
+                <th>Source IP (CGN)</th>
+                <th>Src Port</th>
+                <th style="color:var(--primary);">→</th>
+                <th>Destination IP</th>
+                <th>Dst Port</th>
+                <th>Country</th>
+                <th>Protocol</th>
+                <th>App / Service</th>
+                <th>Rule</th>
+                <th>MAC</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for l in logs %}
+        <tr>
+            <td class="mono">{{ l.log_time.strftime('%Y-%m-%d %H:%M:%S') if l.log_time else '' }}</td>
+            <td><strong style="color:var(--success);">{{ l.username or '' }}</strong></td>
+            <td class="mono">
+                <a href="{{ url_for('flow_logs_view', src_ip=l.source_ip) }}" style="color:var(--text); text-decoration:none;" title="Filter by this source">
+                    {{ l.source_ip }}
+                </a>
+            </td>
+            <td class="mono">{{ l.source_port }}</td>
+            <td style="color:var(--primary);">→</td>
+            <td class="mono">
+                <a href="{{ url_for('flow_logs_view', dst_ip=l.destination_ip) }}" style="color:var(--text); text-decoration:none;" title="Filter by this destination">
+                    {{ l.destination_ip }}
+                </a>
+            </td>
+            <td class="mono">{{ l.destination_port }}</td>
+            <td><span class="badge badge-info" style="font-size:10px;">{{ l.country }}</span></td>
+            <td>
+                {% if l.protocol_name == 'tcp' %}<span class="badge badge-info">TCP</span>
+                {% elif l.protocol_name == 'udp' %}<span class="badge badge-warning">UDP</span>
+                {% else %}<span class="badge badge-primary">{{ l.protocol_name }}</span>{% endif %}
+            </td>
+            <td style="font-size:12px;">{{ l.decoded }}</td>
+            <td style="font-size:12px;">{{ l.rule_set }}/{{ l.rule_name }}</td>
+            <td class="mono" style="font-size:11px;">{{ l.mac|format_mac }}</td>
+        </tr>
+        {% endfor %}
+        {% if not logs %}
+        <tr><td colspan="13" style="text-align:center; color:var(--text-muted); padding:24px;">No flow records found. Try adjusting your filters.</td></tr>
+        {% endif %}
+        </tbody>
+    </table>
+    </div>
+
+    {% if total_count > 0 %}
+    <div class="pagination">
+        {% if page > 1 %}
+        <a href="?page={{ page-1 }}&src_ip={{ filters.src_ip }}&dst_ip={{ filters.dst_ip }}&dst_port={{ filters.dst_port }}&protocol={{ filters.protocol }}">&laquo; Prev</a>
+        {% endif %}
+        <span class="current">Page {{ page }} of {{ total_pages }}</span>
+        {% if page < total_pages %}
+        <a href="?page={{ page+1 }}&src_ip={{ filters.src_ip }}&dst_ip={{ filters.dst_ip }}&dst_port={{ filters.dst_port }}&protocol={{ filters.protocol }}">Next &raquo;</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

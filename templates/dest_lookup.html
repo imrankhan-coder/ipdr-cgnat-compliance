@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Destination Lookup{% endblock %}
+{% block page_title %}<i class="fas fa-crosshairs"></i> Destination Lookup — Who Connected to a Target?{% endblock %}
+
+{% block content %}
+<div class="peca-banner">
+    <i class="fas fa-exclamation-triangle"></i>
+    <strong>PECA Section 29:</strong> Search by destination IP/port to identify which subscribers connected to a specific server or service. All queries are audited.
+</div>
+
+<div class="card">
+    <div class="card-header">Query Parameters</div>
+    <form method="POST">
+        <div class="form-row">
+            <div class="form-group">
+                <label>Destination IP *</label>
+                <input type="text" name="dest_ip" class="form-control mono" placeholder="142.250.4.94" value="{{ form_data.get('dest_ip', '') }}" required>
+            </div>
+            <div class="form-group">
+                <label>Destination Port (optional)</label>
+                <input type="number" name="dest_port" class="form-control mono" placeholder="443" value="{{ form_data.get('dest_port', '') }}">
+            </div>
+            <div class="form-group">
+                <label>Date From</label>
+                <input type="datetime-local" name="date_from" class="form-control" value="{{ form_data.get('date_from', '') }}">
+            </div>
+            <div class="form-group">
+                <label>Date To</label>
+                <input type="datetime-local" name="date_to" class="form-control" value="{{ form_data.get('date_to', '') }}">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Case Reference / FIR Number</label>
+                <input type="text" name="case_ref" class="form-control" value="{{ form_data.get('case_ref', '') }}">
+            </div>
+            <div class="form-group">
+                <label>Reason / Authority</label>
+                <input type="text" name="reason" class="form-control" value="{{ form_data.get('reason', '') }}">
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Search Connections</button>
+    </form>
+</div>
+
+{% if results is not none %}
+<!-- Subscriber Summary -->
+<div class="card">
+    <div class="card-header">Subscribers Who Connected ({{ results.subscribers|length }} unique)</div>
+    <div style="overflow-x:auto;">
+    <table>
+        <thead><tr><th>Username</th><th>CGN IP</th><th>MAC</th><th>Connections</th><th>First Seen</th><th>Last Seen</th></tr></thead>
+        <tbody>
+        {% for s in results.subscribers %}
+        <tr>
+            <td><strong style="color:var(--success);">{{ s.username or 'UNKNOWN' }}</strong></td>
+            <td class="mono">{{ s.cgn_ip }}</td>
+            <td class="mono">{{ s.mac|format_mac or 'N/A' }}</td>
+            <td><span class="badge badge-primary">{{ s.connection_count }}</span></td>
+            <td class="mono">{{ s.first_seen.strftime('%Y-%m-%d %H:%M:%S') if s.first_seen else '' }}</td>
+            <td class="mono">{{ s.last_seen.strftime('%Y-%m-%d %H:%M:%S') if s.last_seen else '' }}</td>
+        </tr>
+        {% endfor %}
+        {% if not results.subscribers %}
+        <tr><td colspan="6" style="text-align:center; color:var(--text-muted);">No matching connections found.</td></tr>
+        {% endif %}
+        </tbody>
+    </table>
+    </div>
+</div>
+
+<!-- Detailed Flow Records -->
+<div class="card">
+    <div class="card-header">Flow Records ({{ results.flows|length }}, max 200)</div>
+    <div style="overflow-x:auto;">
+    <table>
+        <thead><tr><th>Time</th><th>Username</th><th>Source (CGN)</th><th>Src Port</th><th>Destination</th><th>Dst Port</th><th>Protocol</th><th>Application</th><th>Rule</th></tr></thead>
+        <tbody>
+        {% for f in results.flows %}
+        <tr>
+            <td class="mono">{{ f.log_time.strftime('%H:%M:%S') if f.log_time else '' }}</td>
+            <td><strong>{{ f.username or '' }}</strong></td>
+            <td class="mono">{{ f.source_ip }}</td>
+            <td class="mono">{{ f.source_port }}</td>
+            <td class="mono">{{ f.destination_ip }}</td>
+            <td class="mono">{{ f.destination_port }}</td>
+            <td>{{ f.protocol_name }}</td>
+            <td>{{ f.application }}</td>
+            <td>{{ f.rule_set }}/{{ f.rule_name }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

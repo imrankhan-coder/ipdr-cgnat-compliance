@@ -1,0 +1,44 @@
+{# Reusable pagination controls. Include with:
+   {% include '_pagination.html' with context %}
+   Expects a `pg` dict from _page_meta() in context, and the current endpoint.
+   Preserves existing query args (e.g. search q, nas scope) via request.args. #}
+{% if pg %}
+<div class="elb-pager" style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:14px; flex-wrap:wrap;">
+  <div class="text-muted" style="font-size:12px;">
+    {% if pg.total %}Showing {{ '{:,}'.format(pg.start) }}–{{ '{:,}'.format(pg.end) }} of {{ '{:,}'.format(pg.total) }}{% if pg.is_all %} (capped){% endif %}{% else %}No rows{% endif %}
+  </div>
+  <div style="display:flex; align-items:center; gap:12px;">
+    <form method="GET" style="margin:0; display:flex; align-items:center; gap:6px;">
+      {# preserve other query args except page/per_page #}
+      {% for k, v in request.args.items() %}
+        {% if k not in ['per_page', 'page'] %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}
+      {% endfor %}
+      <label style="font-size:12px; color:var(--text-muted);">Per page</label>
+      <select name="per_page" onchange="this.form.submit()" class="form-control" style="width:auto; padding:4px 8px; font-size:12px;">
+        {% for s in pg.sizes %}
+        <option value="{{ s }}" {% if not pg.is_all and pg.per_page == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+        <option value="all" {% if pg.is_all %}selected{% endif %}>All</option>
+      </select>
+    </form>
+    {% if pg.pages > 1 %}
+    <div style="display:flex; align-items:center; gap:4px;">
+      {% set base = [] %}
+      {% for k, v in request.args.items() if k != 'page' %}{% set _ = base.append(k ~ '=' ~ v) %}{% endfor %}
+      {% set qbase = '?' ~ base|join('&') ~ ('&' if base else '') %}
+      {% if pg.has_prev %}
+      <a href="{{ qbase }}page={{ pg.page - 1 }}" class="btn btn-sm btn-outline"><i class="fas fa-chevron-left"></i></a>
+      {% else %}
+      <span class="btn btn-sm btn-outline" style="opacity:0.4; pointer-events:none;"><i class="fas fa-chevron-left"></i></span>
+      {% endif %}
+      <span style="font-size:12px; color:var(--text-muted); padding:0 6px;">Page {{ pg.page }} of {{ '{:,}'.format(pg.pages) }}</span>
+      {% if pg.has_next %}
+      <a href="{{ qbase }}page={{ pg.page + 1 }}" class="btn btn-sm btn-outline"><i class="fas fa-chevron-right"></i></a>
+      {% else %}
+      <span class="btn btn-sm btn-outline" style="opacity:0.4; pointer-events:none;"><i class="fas fa-chevron-right"></i></span>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}

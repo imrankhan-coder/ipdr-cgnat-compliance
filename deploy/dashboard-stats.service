@@ -1,0 +1,9 @@
+[Unit]
+Description=IPDR dashboard stats cache refresher
+After=network.target postgresql.service
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=/opt/ipdr/.env
+ExecStart=/opt/ipdr/venv/bin/python /opt/ipdr/scripts/dashboard_stats_refresh.py

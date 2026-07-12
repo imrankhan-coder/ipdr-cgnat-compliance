@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+{% block title %}LEA Query{% endblock %}
+{% block page_title %}<i class="fas fa-search"></i> LEA Query — IP + Port + Timestamp Lookup{% endblock %}
+
+{% block content %}
+<div class="peca-banner">
+    <i class="fas fa-exclamation-triangle"></i>
+    <strong>PECA Section 29 Compliance:</strong> Every query is logged with operator identity, timestamp, case reference, and reason. Unauthorized queries are a criminal offense.
+</div>
+
+<div class="card">
+    <div class="card-header">Query Parameters</div>
+    <form method="POST">
+        <div class="form-row">
+            <div class="form-group">
+                <label>Public IP Address *</label>
+                <input type="text" name="public_ip" class="form-control mono" placeholder="203.0.113.100" value="{{ form_data.get('public_ip', '') }}" required>
+            </div>
+            <div class="form-group">
+                <label>Destination Port *</label>
+                <input type="number" name="port" class="form-control mono" placeholder="24100" value="{{ form_data.get('port', '') }}" required>
+            </div>
+            <div class="form-group">
+                <label>Timestamp (ISO 8601) *</label>
+                <input type="datetime-local" name="timestamp" class="form-control" value="{{ form_data.get('timestamp', '') }}" required>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Case Reference / FIR Number</label>
+                <input type="text" name="case_ref" class="form-control" placeholder="FIA/CW/2026/..." value="{{ form_data.get('case_ref', '') }}">
+            </div>
+            <div class="form-group">
+                <label>Reason / Authority</label>
+                <input type="text" name="reason" class="form-control" placeholder="Court order / LEA request" value="{{ form_data.get('reason', '') }}">
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Search IPDR Records</button>
+    </form>
+</div>
+
+{# ===== MikroTik LEA result (matches result-box / result-value styling) ===== #}
+{% if mt_result %}
+  {% if mt_result.found %}
+    {% set p = mt_result.primary %}
+
+    {% if mt_result.port_reuse %}
+    <div class="peca-banner" style="background:#fff7ed;border-color:#d97706;color:#7c2d12;">
+      <i class="fas fa-exclamation-triangle"></i>
+      <strong>Port reuse detected —</strong> {{ mt_result.candidates|length }} different
+      subscribers held {{ mt_result.query.public_ip }}:{{ mt_result.query.public_port }}
+      within &plusmn;{{ mt_result.window_seconds }}s of the queried time. The closest match
+      is shown first; verify against the exact timestamp before attribution.
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="card-header">
+        <span>Subscriber Identity &mdash; MikroTik &middot; {{ p.nas_name }}</span>
+      </div>
+      <div class="result-box">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;">
+          <div>
+            <div class="result-label">Subscriber (PPPoE)</div>
+            <div class="result-value mono">{{ p.username }}</div>
+          </div>
+          <div>
+            <div class="result-label">Customer</div>
+            <div class="result-value" style="font-size:13px;">
+              {% if p.identity and p.identity.customer_name %}
+                <strong>{{ p.identity.customer_name }}</strong>
+                {% if p.identity.phone %}<br><span class="mono">&#9742; {{ p.identity.phone }}</span>{% endif %}
+                {% if p.identity.mac %}<br><span class="mono">MAC {{ p.identity.mac }}</span>{% endif %}
+                {% if p.identity.source %}<br><span class="badge" style="font-size:10px;">{{ p.identity.source }}</span>{% endif %}
+              {% else %}
+                <span style="color:#9ca3af;">Not enriched — look up account
+                  <span class="mono">{{ p.username }}</span></span>
+              {% endif %}
+            </div>
+          </div>
+          <div>
+            <div class="result-label">Public NAT IP : Port</div>
+            <div class="result-value mono">{{ p.public_ip }} : {{ p.public_port }}</div>
+          </div>
+          <div>
+            <div class="result-label">Private IP : Port</div>
+            <div class="result-value mono">{{ p.private_ip }} : {{ p.private_port }}</div>
+          </div>
+          <div>
+            <div class="result-label">Destination</div>
+            <div class="result-value mono" style="font-size:13px;">{{ p.dest_ip }} : {{ p.dest_port }} / {{ p.protocol }}</div>
+          </div>
+          <div>
+            <div class="result-label">Connection Time</div>
+            <div class="result-value" style="font-size:13px;">{{ p.log_time }}
+              <span style="color:#9ca3af;">(&Delta;{{ p.delta_seconds }}s)</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% if mt_result.port_reuse %}
+    <div class="card">
+      <div class="card-header"><span>All Candidates in Window (&plusmn;{{ mt_result.window_seconds }}s)</span></div>
+      <div class="result-box">
+        <table class="data-table">
+          <thead><tr>
+            <th>Subscriber</th><th>Private IP:Port</th><th>Destination</th><th>Time</th><th>&Delta;</th>
+          </tr></thead>
+          <tbody>
+          {% for c in mt_result.candidates %}
+            <tr {% if c.id == p.id %}style="background:#eef6ff;font-weight:600;"{% endif %}>
+              <td class="mono">{{ c.username }}</td>
+              <td class="mono">{{ c.private_ip }}:{{ c.private_port }}</td>
+              <td class="mono">{{ c.dest_ip }}:{{ c.dest_port }}</td>
+              <td style="font-size:13px;">{{ c.log_time }}</td>
+              <td>{{ c.delta_seconds }}s</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+  {% else %}
+    <div class="card">
+      <div class="result-box" style="color:#6b7280;">
+        No MikroTik translation found for
+        <span class="mono">{{ mt_result.query.public_ip }}:{{ mt_result.query.public_port }}</span>
+        within &plusmn;{{ mt_result.window_seconds }}s of {{ mt_result.query.time }}.
+      </div>
+    </div>
+  {% endif %}
+{% endif %}
+
+{% if results is not none %}
+<div class="card">
+    <div class="card-header">
+        <span>Query Results ({{ results|length }} match{{ 'es' if results|length != 1 }})</span>
+        {% if results %}
+        <form method="POST" action="{{ url_for('export_lea_report') }}" style="display:inline;">
+            <input type="hidden" name="public_ip" value="{{ form_data.get('public_ip', '') }}">
+            <input type="hidden" name="port" value="{{ form_data.get('port', '') }}">
+            <input type="hidden" name="timestamp" value="{{ form_data.get('timestamp', '') }}">
+            <input type="hidden" name="case_ref" value="{{ form_data.get('case_ref', '') }}">
+            <input type="hidden" name="results_data" value="{{ results|tojson }}">
+            <button type="submit" class="btn btn-sm btn-outline"><i class="fas fa-download"></i> Export CSV Report</button>
+        </form>
+        {% endif %}
+    </div>
+
+    {% if results %}
+        {% for r in results %}
+        <div class="result-box">
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px;">
+                <div>
+                    <div class="result-label">Subscriber (CGN IP)</div>
+                    <div class="result-value">{{ r.nat.subscriber_ip }}</div>
+                </div>
+                <div>
+                    <div class="result-label">Public NAT IP</div>
+                    <div class="result-value">{{ r.nat.public_ip }}</div>
+                </div>
+                <div>
+                    <div class="result-label">Port Block</div>
+                    <div class="result-value">{{ r.nat.port_block_start }} – {{ r.nat.port_block_end }}</div>
+                </div>
+                <div>
+                    <div class="result-label">NAT Alloc Time</div>
+                    <div class="result-value" style="font-size:13px;">{{ r.nat.log_time }}</div>
+                </div>
+                <div>
+                    <div class="result-label">NAT Release Time</div>
+                    <div class="result-value" style="font-size:13px;">{{ r.nat.release_time or 'ACTIVE' }}</div>
+                </div>
+                <div>
+                    <div class="result-label">Blocks Used/Max</div>
+                    <div class="result-value">{{ r.nat.blocks_used }}/{{ r.nat.blocks_max }}</div>
+                </div>
+            </div>
+
+            {% if r.radius %}
+            <hr style="border-color:var(--border); margin:16px 0;">
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px;">
+                <div>
+                    <div class="result-label">PPPoE Username</div>
+                    <div class="result-value" style="color:var(--success);">{{ r.radius.username }}</div>
+                </div>
+                <div>
+                    <div class="result-label">MAC Address</div>
+                    <div class="result-value">{{ r.radius.calling_station_id|format_mac }}</div>
+                </div>
+                <div>
+                    <div class="result-label">NAS Port / VLAN</div>
+                    <div class="result-value" style="font-size:13px;">{{ r.radius.nas_port_id }}</div>
+                </div>
+                <div>
+                    <div class="result-label">Session Start</div>
+                    <div class="result-value" style="font-size:13px;">{{ r.radius.session_start }}</div>
+                </div>
+                <div>
+                    <div class="result-label">Session End</div>
+                    <div class="result-value" style="font-size:13px;">{{ r.radius.session_stop or 'ACTIVE' }}</div>
+                </div>
+                <div>
+                    <div class="result-label">IPv6 Prefix</div>
+                    <div class="result-value" style="font-size:12px;">{{ r.radius.framed_ipv6_prefix or 'N/A' }}</div>
+                </div>
+            </div>
+            {% else %}
+            <hr style="border-color:var(--border); margin:16px 0;">
+            <div class="alert alert-warning" style="margin:0;">
+                <i class="fas fa-exclamation-triangle"></i> No matching RADIUS session found for this CGN IP at the queried timestamp.
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="alert alert-info">No matching NAT port-block allocations found for the given IP, port, and timestamp.</div>
+    {% endif %}
+</div>
+
+{% if flow_matches %}
+<div class="card">
+    <div class="card-header">Per-Flow NAT Matches (±5 minutes)</div>
+    <div style="overflow-x:auto;">
+    <table>
+        <thead><tr><th>Time</th><th>Protocol</th><th>Source</th><th>Destination</th><th>Rule</th></tr></thead>
+        <tbody>
+        {% for f in flow_matches %}
+        <tr>
+            <td class="mono">{{ f.log_time.strftime('%H:%M:%S') if f.log_time else '' }}</td>
+            <td>{{ f.protocol_name }}</td>
+            <td class="mono">{{ f.source_ip }}:{{ f.source_port }}</td>
+            <td class="mono">{{ f.destination_ip }}:{{ f.destination_port }}</td>
+            <td>{{ f.rule_set }}/{{ f.rule_name }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

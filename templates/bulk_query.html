@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Bulk IP Query{% endblock %}
+{% block page_title %}<i class="fas fa-file-upload"></i> Bulk IP Query — Batch LEA Processing{% endblock %}
+
+{% block content %}
+<div class="peca-banner">
+    <i class="fas fa-exclamation-triangle"></i>
+    <strong>Batch Processing:</strong> Upload a CSV file or paste multiple queries. Format: <code>PublicIP, Port, Timestamp</code> (one per line). Max 100 per batch.
+</div>
+
+<div class="card">
+    <div class="card-header">Upload Queries</div>
+    <form method="POST" enctype="multipart/form-data">
+        <div class="form-row">
+            <div class="form-group">
+                <label>CSV File (IP, Port, Timestamp)</label>
+                <input type="file" name="file" class="form-control" accept=".csv,.txt">
+            </div>
+            <div class="form-group">
+                <label>Case Reference</label>
+                <input type="text" name="case_ref" class="form-control" placeholder="FIA/CW/2026/...">
+            </div>
+            <div class="form-group">
+                <label>Reason / Authority</label>
+                <input type="text" name="reason" class="form-control" placeholder="Court order / LEA request">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Or Paste Directly (one per line: IP, Port, Timestamp)</label>
+            <textarea name="raw_input" class="form-control mono" rows="6" placeholder="203.0.113.100, 24100, 2026-07-01T22:44:25
+203.0.113.100, 15000, 2026-07-01T21:30:00
+203.0.113.100, 22700, 2026-07-01T22:20:00"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Process Batch</button>
+    </form>
+</div>
+
+{% if results is not none %}
+<div class="card">
+    <div class="card-header">
+        <span>Batch Results — {{ results|length }} queries, {{ results|selectattr('nat')|list|length }} matched</span>
+        <form method="POST" action="{{ url_for('export_bulk_report') }}" style="display:inline;">
+            <input type="hidden" name="results_data" value="{{ results|tojson }}">
+            <input type="hidden" name="case_ref" value="{{ case_ref }}">
+            <button type="submit" class="btn btn-sm btn-outline"><i class="fas fa-download"></i> Export CSV</button>
+        </form>
+    </div>
+    <div style="overflow-x:auto;">
+    <table>
+        <thead><tr>
+            <th>#</th><th>Query IP</th><th>Port</th><th>Timestamp</th>
+            <th>Status</th><th>Username</th><th>Subscriber IP</th><th>Port Block</th><th>MAC</th><th>VLAN</th>
+        </tr></thead>
+        <tbody>
+        {% for r in results %}
+        <tr style="{% if not r.nat %}opacity:0.5;{% endif %}">
+            <td>{{ loop.index }}</td>
+            <td class="mono">{{ r.query.public_ip }}</td>
+            <td class="mono">{{ r.query.port }}</td>
+            <td class="mono" style="font-size:12px;">{{ r.query.timestamp }}</td>
+            <td>
+                {% if r.error %}<span class="badge badge-warning">ERROR</span>
+                {% elif r.nat and r.radius %}<span class="badge badge-success">MATCHED</span>
+                {% elif r.nat %}<span class="badge badge-info">NAT ONLY</span>
+                {% else %}<span class="badge badge-danger">NO MATCH</span>{% endif %}
+            </td>
+            <td><strong style="color:var(--success);">{{ r.radius.username if r.radius else '' }}</strong></td>
+            <td class="mono">{{ r.nat.subscriber_ip if r.nat else '' }}</td>
+            <td class="mono">{{ r.nat.port_block_start|string + '-' + r.nat.port_block_end|string if r.nat and r.nat.port_block_start else '' }}</td>
+            <td class="mono" style="font-size:11px;">{{ r.radius.calling_station_id|format_mac if r.radius else '' }}</td>
+            <td>{{ r.radius.nas_port_id if r.radius else '' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

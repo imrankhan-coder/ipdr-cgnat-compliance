@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Edit NAS — {{ dev.name }}{% endblock %}
+{% block page_title %}<i class="fas fa-pen"></i> Edit NAS — {{ dev.name }}{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header">Edit NAS Device</div>
+    <form method="POST" action="{{ url_for('nas_edit', nas_id=dev.id) }}">
+        <div class="form-row" style="display:flex; gap:12px; flex-wrap:wrap;">
+            <div class="form-group" style="flex:2; min-width:220px;">
+                <label>Name / Hostname *</label>
+                <input type="text" name="name" class="form-control" value="{{ dev.name }}" required>
+            </div>
+            <div class="form-group" style="flex:2; min-width:200px;">
+                <label>Source IP (syslog)</label>
+                <input type="text" name="source_ip" class="form-control mono"
+                       value="{{ dev.source_ip or '' }}">
+            </div>
+        </div>
+        <div class="form-row" style="display:flex; gap:12px; flex-wrap:wrap;">
+            <div class="form-group" style="flex:1; min-width:140px;">
+                <label>Model</label>
+                <select name="model" class="form-control">
+                    {% for m in ['syslog','deterministic','both'] %}
+                    <option value="{{ m }}" {% if (dev.model or 'syslog')==m %}selected{% endif %}>{{ m }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="flex:1; min-width:120px;">
+                <label>Role</label>
+                <select name="collection_role" class="form-control">
+                    <option value="local" {% if (dev.collection_role or 'local')=='local' %}selected{% endif %}>local (logs here)</option>
+                    <option value="remote" {% if dev.collection_role=='remote' %}selected{% endif %}>remote (own logger)</option>
+                </select>
+            </div>
+            <div class="form-group" style="flex:1; min-width:120px;">
+                <label>Region</label>
+                <input type="text" name="region" class="form-control" value="{{ dev.region or '' }}">
+            </div>
+            <div class="form-group" style="min-width:100px;">
+                <label>Syslog Port</label>
+                <input type="text" name="syslog_port" class="form-control mono" value="{{ dev.syslog_port or 514 }}">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Description</label>
+            <input type="text" name="description" class="form-control" value="{{ dev.description or '' }}">
+        </div>
+
+        {% if box_engine == 'mikrotik' %}
+        <div style="border-top:1px solid var(--border); margin-top:12px; padding-top:12px;">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="checkbox" name="api_enabled" id="api_enabled" {% if dev.api_enabled %}checked{% endif %}
+                       onchange="document.getElementById('api-fields').style.display=this.checked?'block':'none';">
+                <span><i class="fas fa-plug"></i> Enable API access (customer-name enrichment &amp; live sessions)</span>
+            </label>
+            <div id="api-fields" style="{% if not dev.api_enabled %}display:none;{% endif %} margin-top:10px;">
+                <div class="form-row" style="display:flex; gap:12px; flex-wrap:wrap;">
+                    <div class="form-group" style="flex:1; min-width:140px;">
+                        <label>API User</label>
+                        <input type="text" name="api_user" class="form-control mono" value="{{ dev.api_user or 'elbipdr' }}">
+                    </div>
+                    <div class="form-group" style="flex:1; min-width:120px;">
+                        <label>API Port</label>
+                        <input type="text" name="api_port" class="form-control mono" value="{{ dev.api_port or '' }}" placeholder="8728">
+                    </div>
+                    <div class="form-group" style="min-width:120px;">
+                        <label style="display:flex; align-items:center; gap:6px;">
+                            <input type="checkbox" name="api_ssl" {% if dev.api_ssl %}checked{% endif %}> API-SSL
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>API Password
+                        {% if has_api_pw %}<span style="color:var(--success); font-size:11px;">&#10003; password set — leave blank to keep it</span>
+                        {% else %}<span style="color:var(--text-muted); font-size:11px;">(blank = generate a strong one)</span>{% endif %}
+                    </label>
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" name="api_password" id="api_password" class="form-control mono"
+                               placeholder="{% if has_api_pw %}unchanged{% else %}will be generated{% endif %}">
+                        <button type="button" class="btn btn-sm btn-outline" onclick="genApiPw()"><i class="fas fa-sync"></i> New</button>
+                    </div>
+                    <p style="font-size:11px; color:var(--text-muted); margin-top:4px;">
+                        Changing this rotates the credential — you must re-run the Config on the router.
+                        The current password (if set) is shown in the Config output.
+                    </p>
+                </div>
+            </div>
+        </div>
+        <script>
+        function genApiPw(){
+            var a="ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+            var s=""; var arr=new Uint32Array(20); crypto.getRandomValues(arr);
+            for(var i=0;i<20;i++){s+=a[arr[i]%a.length];}
+            document.getElementById('api_password').value=s;
+        }
+        </script>
+        {% endif %}
+
+        <div style="margin-top:14px; display:flex; gap:8px;">
+            <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Changes</button>
+            <a href="{{ url_for('nas_devices') }}" class="btn btn-outline">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

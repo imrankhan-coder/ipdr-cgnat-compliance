@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Paste Request{% endblock %}
+{% block page_title %}<i class="fas fa-paste"></i> Paste Request (tcpdump / ACNS){% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header">Paste an LEA / abuse request</div>
+    <div class="card-body">
+        <p class="text-muted" style="font-size:12px; margin-top:0;">
+            Paste the raw email content — <strong>tcpdump lines</strong> or an
+            <strong>ACNS XML</strong> infringement notice. Format is auto-detected; the
+            parsed IP:port:time is shown before resolving. Results are grouped by NAS.
+        </p>
+        <form method="POST" action="{{ url_for('paste_request') }}">
+            <textarea name="payload" class="form-control mono" rows="10"
+                placeholder="1783851029.560458 IP 203.0.113.2.37358 &gt; 91.190.98.12.443: Flags [S] ...&#10;&#10;— or —&#10;&#10;&lt;IP_Address&gt;203.0.113.10&lt;/IP_Address&gt;&lt;Port&gt;60837&lt;/Port&gt;&lt;TimeStamp&gt;2026-07-10T03:48:29Z&lt;/TimeStamp&gt;">{{ raw_text }}</textarea>
+            <div class="form-row" style="display:flex; gap:12px; margin-top:8px;">
+                <div class="form-group" style="flex:1;">
+                    <label>Case Reference</label>
+                    <input type="text" name="case_ref" class="form-control" placeholder="optional">
+                </div>
+                <div class="form-group" style="flex:1;">
+                    <label>Reason</label>
+                    <input type="text" name="reason" class="form-control" placeholder="optional">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary" style="margin-top:8px;">
+                <i class="fas fa-search"></i> Parse &amp; Resolve
+            </button>
+        </form>
+    </div>
+</div>
+
+{% if parsed is not none %}
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between;">
+        <span><i class="fas fa-list-check"></i> Parsed {{ parsed|length }} item(s)</span>
+        <span class="badge {{ 'badge-success' if fmt != 'none' else 'badge-danger' }}">format: {{ fmt }}</span>
+    </div>
+    <div class="card-body" style="overflow-x:auto;">
+        {% if parsed %}
+        <table class="data-table">
+            <thead><tr><th>Fmt</th><th>Public IP</th><th>Port</th><th>Time (matched)</th><th>Raw time</th><th>Dest</th><th>Case / Title</th></tr></thead>
+            <tbody>
+            {% for it in parsed %}
+            <tr>
+                <td>{{ it.format }}</td>
+                <td class="mono">{{ it.src_ip }}</td>
+                <td class="mono">{{ it.src_port }}</td>
+                <td class="mono">{{ it.when }}</td>
+                <td class="mono" style="font-size:11px;">{{ it.when_raw }}</td>
+                <td class="mono">{{ (it.dest_ip ~ ':' ~ it.dest_port) if it.dest_ip else '—' }}</td>
+                <td style="font-size:11px;">{{ it.title or it.case or '—' }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted">No recognisable requests found. Paste tcpdump lines or ACNS XML.</p>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% if grouped %}
+{% for nas_name, entries in grouped.items() %}
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between;">
+        <span><i class="fas fa-server"></i> {{ nas_name }}</span>
+        <span class="text-muted" style="font-size:12px;">{{ entries|length }} request(s)</span>
+    </div>
+    <div class="card-body">
+        {% for e in entries %}
+        <div style="border:1px solid var(--border); border-radius:6px; padding:10px; margin-bottom:10px;">
+            <div style="font-size:12px; color:var(--text-muted); margin-bottom:6px;">
+                Request: <span class="mono">{{ e.request.src_ip }}:{{ e.request.src_port }}</span>
+                @ <span class="mono">{{ e.request.when }}</span>
+                {% if e.request.dest_ip %}→ <span class="mono">{{ e.request.dest_ip }}:{{ e.request.dest_port }}</span>{% endif %}
+                {% if e.request.title %}<br>Content: <strong>{{ e.request.title }}</strong>{% endif %}
+                {% if e.port_reuse %}<span class="badge badge-warning" style="margin-left:8px;">PORT REUSE — use dest match</span>{% endif %}
+            </div>
+            {% if e.found %}
+            <table class="data-table">
+                <thead><tr><th>User</th><th>Customer</th><th>Phone</th><th>Private IP</th><th>Dest</th><th>MAC</th><th>Time</th></tr></thead>
+                <tbody>
+                {% for m in e.matches %}
+                <tr {% if m.dest_confirms %}style="background:rgba(26,138,74,0.12);"{% endif %}>
+                    <td class="mono"><strong>{{ m.username }}</strong></td>
+                    <td style="font-size:12px;">{{ m.customer or '—' }}</td>
+                    <td class="mono">{{ m.phone or '—' }}</td>
+                    <td class="mono">{{ m.private_ip }}</td>
+                    <td class="mono">{{ m.dest_ip }}:{{ m.dest_port }}{% if m.dest_confirms %} <i class="fas fa-check" title="destination matches request"></i>{% endif %}</td>
+                    <td class="mono" style="font-size:11px;">{{ m.src_mac or '—' }}</td>
+                    <td class="mono" style="font-size:11px;">{{ m.log_time }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="text-muted" style="margin:0;">No match — this public IP:port wasn't seen in the ±5min window (not on this network, or outside retention).</p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

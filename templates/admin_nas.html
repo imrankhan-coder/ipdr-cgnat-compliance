@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+{% block title %}NAS Devices
+
+{% endblock %}
+{% block page_title %}<i class="fas fa-network-wired"></i> NAS Devices — {{ 'MikroTik CGNAT NAS' if box_engine == 'mikrotik' else 'BNG/MX Management' }}{% endblock %}
+{% block content %}
+
+<div class="peca-banner">
+    <i class="fas fa-info-circle"></i>
+    {% if box_engine == 'mikrotik' %}
+    <strong>Onboard a MikroTik CGNAT router here.</strong> Add the device, click <strong>Apply &amp; Reload</strong> to open its
+    syslog firewall port, then use the <strong>Config</strong> button on its row to get the paste-ready RouterOS logging config.
+    {% else %}
+    <strong>Onboard a new BNG/router here</strong> instead of editing config files by hand. Add the device, then click
+    <strong>Apply &amp; Reload</strong> to write the FreeRADIUS client, open the firewall for its syslog + accounting, and reload the service.
+    Then point the device's RADIUS accounting and NAT syslog at this server.
+    {% endif %}
+</div>
+
+{% if pending_count and pending_count > 0 %}
+<div class="alert alert-warning" style="display:flex; justify-content:space-between; align-items:center;">
+    <span><i class="fas fa-exclamation-triangle"></i> {{ pending_count }} pending change(s) not yet applied.</span>
+    <form method="POST" action="{{ url_for('nas_apply') }}" style="margin:0;">
+        <button type="submit" class="btn btn-success"><i class="fas fa-sync"></i> Apply &amp; Reload</button>
+    </form>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header">Add NAS Device</div>
+    <form method="POST" action="{{ url_for('nas_add') }}">
+        <div class="form-row">
+            <div class="form-group">
+                <label>Name / Hostname *</label>
+                <input type="text" name="name" class="form-control" placeholder="{{ 'SITE-B-CORE-01' if box_engine == 'mikrotik' else 'SITE-B-BNG-01' }}" required>
+            </div>
+            <div class="form-group">
+                <label>Source IP (RADIUS + syslog) *</label>
+                <input type="text" name="ip_address" class="form-control mono" placeholder="163.61.128.2" required>
+            </div>
+            <div class="form-group">
+                <label>Vendor</label>
+                <select name="nas_type" class="form-control">
+                    {% if box_engine == 'mikrotik' %}
+                    <option value="mikrotik" selected>MikroTik</option>
+                    <option value="juniper">Juniper</option>
+                    <option value="cisco">Cisco</option>
+                    <option value="other">Other</option>
+                    {% else %}
+                    <option value="juniper">Juniper</option>
+                    <option value="cisco">Cisco</option>
+                    <option value="mikrotik">MikroTik</option>
+                    <option value="other">Other</option>
+                    {% endif %}
+                </select>
+            </div>
+        </div>
+        <div class="form-row">
+            {% if box_engine != 'mikrotik' %}{# radius-secret #}
+            <div class="form-group">
+                <label>RADIUS Secret</label>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <label style="font-size:13px; white-space:nowrap;">
+                        <input type="radio" name="secret_mode" value="auto" checked onclick="document.getElementById('secret_field').disabled=true;"> Auto-generate
+                    </label>
+                    <label style="font-size:13px; white-space:nowrap;">
+                        <input type="radio" name="secret_mode" value="manual" onclick="document.getElementById('secret_field').disabled=false;"> Manual
+                    </label>
+                    <input type="text" id="secret_field" name="secret" class="form-control mono" placeholder="Leave blank to auto-generate" disabled>
+                </div>
+            </div>
+            {% endif %}
+            <div class="form-group" style="flex:2;">
+                <label>Description</label>
+                <input type="text" name="description" class="form-control" placeholder="e.g. CityB EXAMPLE core BNG">
+            </div>
+        </div>
+        {% if box_engine == 'mikrotik' %}
+        <div class="api-access-section" style="border-top:1px solid var(--border); margin-top:12px; padding-top:12px;">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="checkbox" name="api_enabled" id="api_enabled"
+                       onchange="document.getElementById('api-fields').style.display=this.checked?'block':'none';">
+                <span><i class="fas fa-plug"></i> Enable API access (for customer-name enrichment &amp; live sessions)</span>
+            </label>
+            <div id="api-fields" style="display:none; margin-top:10px;">
+                <div class="form-row" style="display:flex; gap:12px; flex-wrap:wrap;">
+                    <div class="form-group" style="flex:1; min-width:140px;">
+                        <label>API User</label>
+                        <input type="text" name="api_user" class="form-control mono" value="elbipdr">
+                    </div>
+                    <div class="form-group" style="flex:1; min-width:120px;">
+                        <label>API Port</label>
+                        <input type="text" name="api_port" class="form-control mono" placeholder="8728">
+                    </div>
+                    <div class="form-group" style="min-width:120px;">
+                        <label style="display:flex; align-items:center; gap:6px;">
+                            <input type="checkbox" name="api_ssl" id="api_ssl"
+                                   onchange="document.getElementById('api_port').placeholder=this.checked?'8729':'8728';">
+                            API-SSL
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>API Password <span style="color:var(--text-muted); font-size:11px;">(generated — copy it into the router config)</span></label>
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" name="api_password" id="api_password" class="form-control mono" readonly>
+                        <button type="button" class="btn btn-sm btn-outline" onclick="genApiPw()"><i class="fas fa-sync"></i> Regenerate</button>
+                    </div>
+                    <p style="font-size:11px; color:var(--text-muted); margin-top:4px;">
+                        This exact password appears in the Config output. The read-only API user is
+                        IP-locked to this box. Strong &amp; unique per NAS.
+                    </p>
+                </div>
+            </div>
+        </div>
+        <script>
+        function genApiPw(){
+            var a="ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+            var s=""; var arr=new Uint32Array(20); crypto.getRandomValues(arr);
+            for(var i=0;i<20;i++){s+=a[arr[i]%a.length];}
+            document.getElementById('api_password').value=s;
+        }
+        genApiPw();
+        </script>
+        {% endif %}
+        <button type="submit" class="btn btn-primary"><i class="fas fa-plus"></i> Stage NAS Device</button>
+    </form>
+</div>
+
+<div class="card">
+    <div class="card-header"><i class="fas fa-layer-group"></i> Bulk onboard (many NAS)</div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('nas_bulk_add') }}">
+            <p class="text-muted" style="font-size:12px; margin-top:0;">
+                One NAS per line: <span class="mono">name,source_ip,role,region,model</span>.
+                role = <span class="mono">local</span> (logs here) or <span class="mono">remote</span> (own logger);
+                model = <span class="mono">syslog</span>/<span class="mono">deterministic</span>/<span class="mono">both</span>.
+                Only name is required for remote; local needs source_ip.
+            </p>
+            <textarea name="bulk" class="form-control mono" rows="6"
+                placeholder="SITE-A-01,198.51.100.5,local,CityA,syslog&#10;SITE-A-02,198.51.100.6,local,CityA&#10;SITE-B-01,,remote,CityB"></textarea>
+            <button type="submit" class="btn btn-primary" style="margin-top:8px;">
+                <i class="fas fa-layer-group"></i> Stage All
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <span>Configured NAS Devices</span>
+        <form method="POST" action="{{ url_for('nas_apply') }}" style="margin:0;">
+            <button type="submit" class="btn btn-sm btn-success"><i class="fas fa-sync"></i> Apply &amp; Reload</button>
+        </form>
+    </div>
+    <div style="overflow-x:auto;">
+    <table>
+        <thead><tr>
+            <th>Name</th><th>Source IP</th><th>Vendor</th>{% if box_engine != 'mikrotik' %}<th>RADIUS Secret</th>{% endif %}
+            <th>Status</th><th>State</th><th>Applied</th><th>Actions</th>
+        </tr></thead>
+        <tbody>
+        {% for d in devices %}
+        <tr {% if not d.enabled %}style="opacity:0.5;"{% endif %}>
+            <td><strong>{{ d.name }}</strong>
+                {% if d.description %}<br><span style="font-size:11px; color:var(--text-muted);">{{ d.description }}</span>{% endif %}
+            </td>
+            <td class="mono">{{ d.ip_address }}</td>
+            <td>{{ d.nas_type }}</td>
+            {% if box_engine != 'mikrotik' %}
+            <td class="mono" style="font-size:11px;">
+                <span id="sec-{{ d.id }}" style="filter:blur(4px); transition:filter 0.2s;"
+                      onmouseover="this.style.filter='none'" onmouseout="this.style.filter='blur(4px)'">{{ d.secret }}</span>
+            </td>
+            {% endif %}
+            <td>
+                {% if d.status == 'active' %}<span class="badge badge-success">Active</span>
+                {% elif d.status == 'staged' %}<span class="badge badge-warning">Staged</span>
+                {% else %}<span class="badge badge-info">{{ d.status }}</span>{% endif %}
+            </td>
+            <td>
+                {% if d.enabled %}<span class="badge badge-success">Enabled</span>
+                {% else %}<span class="badge badge-danger">Disabled</span>{% endif %}
+            </td>
+            <td class="mono" style="font-size:11px;">{{ d.applied_at.strftime('%Y-%m-%d %H:%M') if d.applied_at else '—' }}</td>
+            <td style="display:flex; gap:4px;">
+                <a href="{{ url_for('nas_edit', nas_id=d.id) }}"
+                   class="btn btn-sm btn-outline" title="Edit NAS"><i class="fas fa-pen"></i></a>
+                {% if d.api_enabled %}
+                <button type="button" class="btn btn-sm btn-outline" title="Test API reachability"
+                        onclick="elbApiTest(this, '{{ url_for('nas_api_test', nas_id=d.id) }}', '{{ d.name }}')">
+                    <i class="fas fa-plug"></i>
+                </button>
+                {% endif %}
+                {% if d.nas_type == 'mikrotik' %}
+                <a href="{{ url_for('nas_config', nas_id=d.id) }}" target="_blank"
+                   class="btn btn-sm btn-outline" title="RouterOS config"><i class="fas fa-code"></i></a>
+                <a href="{{ url_for('nas_cdn', nas_id=d.id) }}"
+                   class="btn btn-sm btn-outline" title="CDN prefixes"><i class="fas fa-sitemap"></i></a>
+                {% endif %}
+                <form method="POST" action="{{ url_for('nas_toggle', nas_id=d.id) }}" style="margin:0;">
+                    <button type="submit" class="btn btn-sm {% if d.enabled %}btn-warning{% else %}btn-success{% endif %}">
+                        {{ 'Disable' if d.enabled else 'Enable' }}
+                    </button>
+                </form>
+                <form method="POST" action="{{ url_for('nas_delete', nas_id=d.id) }}" style="margin:0;"
+                      onsubmit="return confirm('Delete NAS {{ d.name }}? Its firewall rules will be removed on next Apply.');">
+                    <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+        {% if not devices %}
+        <tr><td colspan="{{ 7 if box_engine == 'mikrotik' else 8 }}" style="text-align:center; color:var(--text-muted);">No NAS devices configured yet.</td></tr>
+        {% endif %}
+        </tbody>
+    </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">Device-Side Configuration{{ ' (MikroTik)' if box_engine == 'mikrotik' else ' (Juniper example)' }}</div>
+    {% if box_engine == 'mikrotik' %}
+    <p style="font-size:13px; color:var(--text-muted); margin:10px 0;">
+        After staging a MikroTik NAS, click its <strong><i class="fas fa-code"></i> Config</strong> button above to get the
+        exact paste-ready RouterOS config for that device — logging action pointed at this server, the CGNAT
+        connection-logging rules, and the box-side firewall note. Generated per-device with real values.
+    </p>
+    {% else %}
+    <p style="font-size:13px; color:var(--text-muted); margin-bottom:10px;">
+        After adding + applying a NAS here, configure the device to send data to this server ({{ request.host.split(':')[0] }}):
+    </p>
+    <pre style="background:var(--bg-dark); padding:12px; border-radius:6px; font-size:12px; overflow-x:auto;">
+# NAT syslog stream
+set services service-set &lt;SET&gt; syslog stream SP0 host {{ request.host.split(':')[0] }} port 514
+
+# RADIUS accounting
+set access profile &lt;PROFILE&gt; radius accounting-server {{ request.host.split(':')[0] }}
+set access profile &lt;PROFILE&gt; radius-server {{ request.host.split(':')[0] }} accounting-port 1813
+set access profile &lt;PROFILE&gt; radius-server {{ request.host.split(':')[0] }} secret "&lt;THE-SECRET-ABOVE&gt;"
+set access profile &lt;PROFILE&gt; radius-server {{ request.host.split(':')[0] }} source-address &lt;NAS-SOURCE-IP&gt;</pre>
+    {% endif %}
+</div>
+
+{% endblock %}

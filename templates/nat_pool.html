@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}NAT Pool Status{% endblock %}
+{% block page_title %}<i class="fas fa-chart-pie"></i> NAT Pool Status — PLUS_WAN_0{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header">Active Port Block Allocations by Public IP</div>
+    <div style="overflow-x:auto;"><table>
+        <thead><tr><th>Public IP</th><th>Active Blocks</th><th>Ports Allocated</th><th>Unique Subscribers</th><th>Utilization</th></tr></thead>
+        <tbody>
+        {% for p in pool_usage %}
+        <tr>
+            <td class="mono"><strong>{{ p.public_ip }}</strong></td>
+            <td>{{ p.active_blocks }}</td>
+            <td>{{ "{:,}".format(p.ports_allocated|int) }}</td>
+            <td>{{ p.unique_subscribers }}</td>
+            <td>
+                {% set pct = (p.ports_allocated|int / 65535 * 100)|round(1) %}
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <div style="flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden;">
+                        <div style="width:{{ pct }}%;height:100%;background:{% if pct > 80 %}var(--danger){% elif pct > 50 %}var(--warning){% else %}var(--success){% endif %};border-radius:4px;"></div>
+                    </div>
+                    <span style="font-size:12px;">{{ pct }}%</span>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table></div>
+</div>
+{% endblock %}

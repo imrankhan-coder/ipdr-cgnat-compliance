@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}5-Tuple Lookup{% endblock %}
+{% block page_title %}<i class="fas fa-crosshairs"></i> 5-Tuple Lookup{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header">Resolve by connection 5-tuple</div>
+    <div class="card-body">
+        <p class="text-muted" style="font-size:12px; margin-top:0;">
+            Enter the source public (CGNAT) IP + port and the time. Destination IP/port are
+            optional — when given, a matching destination is highlighted as confirmed, which
+            disambiguates CGNAT port reuse.
+        </p>
+        <form method="POST" action="{{ url_for('tuple_lookup') }}">
+            <div class="form-row" style="display:flex; gap:12px; flex-wrap:wrap;">
+                <div class="form-group" style="flex:2; min-width:180px;">
+                    <label>Source Public IP *</label>
+                    <input type="text" name="src_ip" class="form-control mono" required
+                           value="{{ form_data.src_ip or '' }}" placeholder="203.0.113.10">
+                </div>
+                <div class="form-group" style="flex:1; min-width:110px;">
+                    <label>Source Port *</label>
+                    <input type="text" name="src_port" class="form-control mono" required
+                           value="{{ form_data.src_port or '' }}" placeholder="51596">
+                </div>
+            </div>
+            <div class="form-row" style="display:flex; gap:12px; flex-wrap:wrap;">
+                <div class="form-group" style="flex:2; min-width:180px;">
+                    <label>Destination IP <span style="color:var(--text-muted);font-size:11px;">(optional)</span></label>
+                    <input type="text" name="dst_ip" class="form-control mono"
+                           value="{{ form_data.dst_ip or '' }}" placeholder="99.80.34.227">
+                </div>
+                <div class="form-group" style="flex:1; min-width:110px;">
+                    <label>Destination Port <span style="color:var(--text-muted);font-size:11px;">(optional)</span></label>
+                    <input type="text" name="dst_port" class="form-control mono"
+                           value="{{ form_data.dst_port or '' }}" placeholder="443">
+                </div>
+            </div>
+            <div class="form-row" style="display:flex; gap:12px; flex-wrap:wrap;">
+                <div class="form-group" style="flex:2; min-width:220px;">
+                    <label>Timestamp *</label>
+                    <input type="text" name="timestamp" class="form-control mono" required
+                           value="{{ form_data.timestamp or '' }}"
+                           placeholder="2026-07-12T19:18:49 or 2026-07-12T19:18:49Z">
+                </div>
+                <div class="form-group" style="min-width:110px;">
+                    <label>Window (min)</label>
+                    <input type="text" name="window" class="form-control mono"
+                           value="{{ form_data.window or '5' }}">
+                </div>
+            </div>
+            <div class="form-row" style="display:flex; gap:12px;">
+                <div class="form-group" style="flex:1;">
+                    <label>Case Reference</label>
+                    <input type="text" name="case_ref" class="form-control" value="{{ form_data.case_ref or '' }}">
+                </div>
+                <div class="form-group" style="flex:1;">
+                    <label>Reason</label>
+                    <input type="text" name="reason" class="form-control" value="{{ form_data.reason or '' }}">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Resolve</button>
+        </form>
+    </div>
+</div>
+
+{% if results is not none %}
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between;">
+        <span><i class="fas fa-user-check"></i> Results ({{ results|length }})</span>
+        {% if port_reuse %}<span class="badge badge-warning">PORT REUSE — use the confirmed (green) row</span>{% endif %}
+    </div>
+    <div class="card-body" style="overflow-x:auto;">
+        {% if results %}
+        <table class="data-table">
+            <thead><tr><th>User</th><th>Customer</th><th>Phone</th><th>Private IP</th><th>Public</th><th>Destination</th><th>MAC</th><th>NAS</th><th>Time</th></tr></thead>
+            <tbody>
+            {% for r in results %}
+            <tr {% if r.dest_confirms %}style="background:rgba(26,138,74,0.15);"{% endif %}>
+                <td class="mono"><strong>{{ r.username }}</strong></td>
+                <td style="font-size:12px;">{{ r.customer or '—' }}</td>
+                <td class="mono">{{ r.phone or '—' }}</td>
+                <td class="mono">{{ r.private_ip }}</td>
+                <td class="mono">{{ r.public_ip }}:{{ r.public_port }}</td>
+                <td class="mono">{{ r.dest_ip }}:{{ r.dest_port }}{% if r.dest_confirms %} <i class="fas fa-check" title="confirmed"></i>{% endif %}</td>
+                <td class="mono" style="font-size:11px;">{{ r.src_mac or '—' }}</td>
+                <td>{{ r.nas_name }}</td>
+                <td class="mono" style="font-size:11px;">{{ r.log_time }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted" style="margin:0;">No match in the ±window. Check the IP:port, timestamp (try with/without Z), or widen the window.</p>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

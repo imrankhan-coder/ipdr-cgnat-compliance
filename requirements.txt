@@ -1,0 +1,6 @@
+# IPDR runtime dependencies
+Flask>=3.0
+gunicorn>=21.0
+psycopg2-binary>=2.9
+cryptography>=42.0
+librouteros>=3.2

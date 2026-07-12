@@ -1,0 +1,8 @@
+[Unit]
+Description=Refresh analytics fast tier (30m) every 60s
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=120
+AccuracySec=10
+[Install]
+WantedBy=timers.target

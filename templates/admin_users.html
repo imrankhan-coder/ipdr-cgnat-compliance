@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}User Management{% endblock %}
+{% block page_title %}<i class="fas fa-users-cog"></i> User Management{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header">Add New User</div>
+    <form method="POST" action="{{ url_for('admin_add_user') }}">
+        <div class="form-row">
+            <div class="form-group"><label>Username</label><input type="text" name="username" class="form-control" required></div>
+            <div class="form-group"><label>Full Name</label><input type="text" name="full_name" class="form-control" required></div>
+            <div class="form-group"><label>Password</label><input type="password" name="password" class="form-control" minlength="8" required></div>
+            <div class="form-group"><label>Role</label>
+                <select name="role" class="form-control">
+                    <option value="operator">Operator</option>
+                    <option value="lea">LEA Officer</option>
+                    <option value="admin">Admin</option>
+                    <option value="readonly">Read Only</option>
+                </select>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-success"><i class="fas fa-plus"></i> Create User</button>
+    </form>
+</div>
+<div class="card">
+    <div class="card-header">All Users</div>
+    <table>
+        <thead><tr><th>Username</th><th>Full Name</th><th>Role</th><th>Status</th><th>Last Login</th><th>Created</th><th>Actions</th></tr></thead>
+        <tbody>
+        {% for u in users %}
+        <tr>
+            <td><strong>{{ u.username }}</strong></td>
+            <td>{{ u.full_name }}</td>
+            <td><span class="badge badge-{% if u.role == 'admin' %}danger{% elif u.role == 'lea' %}warning{% else %}info{% endif %}">{{ u.role }}</span></td>
+            <td>{% if u.is_active %}<span class="badge badge-success">Active</span>{% else %}<span class="badge badge-danger">Disabled</span>{% endif %}</td>
+            <td class="mono">{{ u.last_login.strftime('%Y-%m-%d %H:%M') if u.last_login else 'Never' }}</td>
+            <td class="mono">{{ u.created_at.strftime('%Y-%m-%d') }}</td>
+            <td style="display:flex;gap:4px;">
+                <form method="POST" action="{{ url_for('admin_toggle_user', user_id=u.id) }}">
+                    <button type="submit" class="btn btn-sm {% if u.is_active %}btn-warning{% else %}btn-success{% endif %}">{{ 'Disable' if u.is_active else 'Enable' }}</button>
+                </form>
+                <form method="POST" action="{{ url_for('admin_reset_password', user_id=u.id) }}" onsubmit="var p=prompt('New password (min 8 chars):');if(!p||p.length<8){alert('Min 8 chars');return false;}this.querySelector('[name=new_password]').value=p;">
+                    <input type="hidden" name="new_password">
+                    <button type="submit" class="btn btn-sm btn-outline"><i class="fas fa-key"></i></button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
