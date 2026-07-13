@@ -12,7 +12,7 @@ query interface for law-enforcement requests.
 Originally built for a MikroTik RouterOS CGNAT deployment; the architecture also
 supports Juniper MX PBA/flow logs.
 
-> **Version 2.0** — DHCP lease tracking, six LEA request-parsing formats,
+> **Version 3.0** — DHCP lease tracking, six LEA request-parsing formats,
 > background stats caching for large datasets, and vendor-aware health panels.
 
 ## What it does

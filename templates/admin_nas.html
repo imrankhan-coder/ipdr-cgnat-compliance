@@ -1,7 +1,5 @@
 {% extends "base.html" %}
-{% block title %}NAS Devices
-
-{% endblock %}
+{% block title %}NAS Devices{% endblock %}
 {% block page_title %}<i class="fas fa-network-wired"></i> NAS Devices — {{ 'MikroTik CGNAT NAS' if box_engine == 'mikrotik' else 'BNG/MX Management' }}{% endblock %}
 {% block content %}
 
@@ -32,11 +30,11 @@
         <div class="form-row">
             <div class="form-group">
                 <label>Name / Hostname *</label>
-                <input type="text" name="name" class="form-control" placeholder="{{ 'SITE-B-CORE-01' if box_engine == 'mikrotik' else 'SITE-B-BNG-01' }}" required>
+                <input type="text" name="name" class="form-control" placeholder="{{ 'FSD-CORE-CCR2004' if box_engine == 'mikrotik' else 'FSD-SWIS-MX480-BNG' }}" required>
             </div>
             <div class="form-group">
                 <label>Source IP (RADIUS + syslog) *</label>
-                <input type="text" name="ip_address" class="form-control mono" placeholder="163.61.128.2" required>
+                <input type="text" name="ip_address" class="form-control mono" placeholder="192.0.2.2" required>
             </div>
             <div class="form-group">
                 <label>Vendor</label>
@@ -72,7 +70,7 @@
             {% endif %}
             <div class="form-group" style="flex:2;">
                 <label>Description</label>
-                <input type="text" name="description" class="form-control" placeholder="e.g. CityB EXAMPLE core BNG">
+                <input type="text" name="description" class="form-control" placeholder="e.g. Faisalabad SWIS core BNG">
             </div>
         </div>
         {% if box_engine == 'mikrotik' %}
@@ -81,6 +79,10 @@
                 <input type="checkbox" name="api_enabled" id="api_enabled"
                        onchange="document.getElementById('api-fields').style.display=this.checked?'block':'none';">
                 <span><i class="fas fa-plug"></i> Enable API access (for customer-name enrichment &amp; live sessions)</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-top:10px;">
+                <input type="checkbox" name="bogon_mitigation" id="bogon_mitigation">
+                <span><i class="fas fa-shield-alt"></i> Bogon mitigation <span style="color:var(--text-muted); font-weight:normal; font-size:12px;">&mdash; drop subscriber leaks to non-existent private IPs, allow real local devices. Config is applied manually on the router.</span></span>
             </label>
             <div id="api-fields" style="display:none; margin-top:10px;">
                 <div class="form-row" style="display:flex; gap:12px; flex-wrap:wrap;">
@@ -138,7 +140,7 @@
                 Only name is required for remote; local needs source_ip.
             </p>
             <textarea name="bulk" class="form-control mono" rows="6"
-                placeholder="SITE-A-01,198.51.100.5,local,CityA,syslog&#10;SITE-A-02,198.51.100.6,local,CityA&#10;SITE-B-01,,remote,CityB"></textarea>
+                placeholder="LHR-SMALL-01,198.51.100.5,local,Lahore,syslog&#10;LHR-SMALL-02,198.51.100.6,local,Lahore&#10;FSD-BIG-01,,remote,Faisalabad"></textarea>
             <button type="submit" class="btn btn-primary" style="margin-top:8px;">
                 <i class="fas fa-layer-group"></i> Stage All
             </button>
@@ -197,6 +199,13 @@
                    class="btn btn-sm btn-outline" title="RouterOS config"><i class="fas fa-code"></i></a>
                 <a href="{{ url_for('nas_cdn', nas_id=d.id) }}"
                    class="btn btn-sm btn-outline" title="CDN prefixes"><i class="fas fa-sitemap"></i></a>
+                <a href="{{ url_for('nas_bogon_config', nas_id=d.id) }}" target="_blank"
+                   class="btn btn-sm btn-outline" title="Bogon mitigation config"><i class="fas fa-shield-alt"></i></a>
+                <span id="bogon-status-{{ d.id }}" title="Bogon mitigation status"
+                      data-bogon-badge-v2="1"
+                      style="display:inline-flex; align-items:center; gap:4px; font-size:10px; font-weight:600; padding:3px 8px; border-radius:10px; background:#e5e7eb; color:#6b7280; white-space:nowrap;">
+                  <i class="fas fa-shield-alt"></i> …
+                </span>
                 {% endif %}
                 <form method="POST" action="{{ url_for('nas_toggle', nas_id=d.id) }}" style="margin:0;">
                     <button type="submit" class="btn btn-sm {% if d.enabled %}btn-warning{% else %}btn-success{% endif %}">
@@ -241,5 +250,28 @@ set access profile &lt;PROFILE&gt; radius-server {{ request.host.split(':')[0] }
 set access profile &lt;PROFILE&gt; radius-server {{ request.host.split(':')[0] }} source-address &lt;NAS-SOURCE-IP&gt;</pre>
     {% endif %}
 </div>
+
+<script>
+/* bogon-badge-relocated */
+(function(){
+  function run(){
+    document.querySelectorAll('[data-bogon-badge-v2]').forEach(function(el){
+      var id = el.id.replace('bogon-status-','');
+      fetch('/api/bogon-status/'+id).then(function(r){return r.json();}).then(function(d){
+        var bg,fg,text,tip;
+        if(!d.reachable){ bg='#e5e7eb';fg='#6b7280';text='Unreachable';tip='router API unreachable'; }
+        else if(d.configured){ bg='#dcfce7';fg='#15803d';text='Protected';tip='ACTIVE — '+d.local_devices+' local devices allowed, bogon dropped'; }
+        else if(d.has_drop||d.has_accept||d.has_script){ bg='#fef3c7';fg='#b45309';text='Partial';tip='PARTIAL — drop:'+d.has_drop+' accept:'+d.has_accept+' script:'+d.has_script; }
+        else if(d.enabled){ bg='#fee2e2';fg='#b91c1c';text='Not deployed';tip='ENABLED but not configured on router'; }
+        else { bg='#e5e7eb';fg='#6b7280';text='Off';tip='not enabled'; }
+        el.style.background=bg; el.style.color=fg;
+        el.innerHTML='<i class="fas fa-shield-alt"></i> '+text;
+        el.title='Bogon mitigation: '+tip;
+      }).catch(function(){ el.innerHTML='<i class="fas fa-shield-alt"></i> ?'; });
+    });
+  }
+  if(document.readyState!=='loading'){ run(); } else { document.addEventListener('DOMContentLoaded', run); }
+})();
+</script>
 
 {% endblock %}

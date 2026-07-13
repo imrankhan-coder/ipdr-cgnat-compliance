@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Bogon Config — {{ nas.name }}{% endblock %}
+{% block page_title %}<i class="fas fa-shield-alt"></i> Bogon Mitigation Config — {{ nas.name }}{% endblock %}
+{% block content %}
+<div class="card">
+    <p style="margin-top:0;"><a href="{{ url_for('nas_devices') }}">← back to NAS Devices</a></p>
+    <p class="text-muted" style="font-size:13px;">
+        Paste-ready RouterOS config for <strong>{{ nas.name }}</strong> ({{ nas.ip_address }}).
+        The whole block pastes in WinBox → New Terminal (the sync script uses RouterOS's
+        own export form, so it pastes as-is — no GUI step). The platform detects status
+        read-only. After applying, the badge turns
+        <span style="color:#15803d;font-weight:600;">Protected</span> within one poll cycle (≤5 min).
+        Remember to edit the <code>LOCAL_MANUAL</code> subnet to your management network,
+        and flip the bogon rule to <code>drop</code> only after observing (step 7).
+    </p>
+    <div style="margin-bottom:10px;">
+        <button class="btn btn-primary btn-sm" onclick="copyBogonCfg(this)"><i class="fas fa-copy"></i> Copy config</button>
+    </div>
+    <pre id="bogonCfg" style="background:var(--bg-dark); padding:14px; border-radius:6px; font-size:12px; line-height:1.5; overflow-x:auto; white-space:pre; max-height:74vh;">{{ cfg }}</pre>
+</div>
+<script>
+function copyBogonCfg(btn){
+  var text = document.getElementById('bogonCfg').innerText;
+  navigator.clipboard.writeText(text).then(function(){
+    var orig = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-check"></i> Copied';
+    setTimeout(function(){ btn.innerHTML = orig; }, 1800);
+  });
+}
+</script>
+{% endblock %}

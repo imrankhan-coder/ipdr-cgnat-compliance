@@ -13,7 +13,7 @@ Usage:
   python3 radius_parser.py --mode watch --dir /var/log/radius/radacct
 
   # Batch mode (replay old files):
-  python3 radius_parser.py --mode batch --file /var/log/radius/radacct/163.61.128.2/detail-20260630
+  python3 radius_parser.py --mode batch --file /var/log/radius/radacct/192.0.2.2/detail-20260630
 """
 
 import sys

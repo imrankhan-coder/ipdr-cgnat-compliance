@@ -1,24 +1,7 @@
 #!/usr/bin/env python3
-# IPDR — CGNAT Compliance & Lawful-Intercept Platform
-# Copyright (C) 2026 Muhammad Imran Khan (@imrankhan-coder)
-#
-# This program is free software: you can redistribute it and/or modify it under
-# the terms of the GNU Affero General Public License as published by the Free
-# Software Foundation, either version 3 of the License, or (at your option) any
-# later version.
-#
-# This program is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for details.
-#
-# You should have received a copy of the GNU Affero General Public License along
-# with this program. If not, see <https://www.gnu.org/licenses/>.
-#
-# Source: https://github.com/imrankhan-coder
-
 """
 IPDR — CGNAT IPDR & LEA Compliance Portal
-Example ISP (Pvt) Ltd — AS64500
+Example ISP — AS64500
 
 Ingests:
   1. NAT PBA syslog from Juniper MX480 (UDP 514)
@@ -33,7 +16,7 @@ Provides:
   - Dashboard with live stats
 """
 
-VERSION = "1.4"
+VERSION = "3.0"
 
 import os
 import re
@@ -117,14 +100,14 @@ def geo_code_filter(ip):
 
 LOG_FMT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOG_FMT)
-log = logging.getLogger("ipdr")
+log = logging.getLogger("elb-ipdr")
 
 # ---------------------------------------------------------------------------
 # Database helpers
 # ---------------------------------------------------------------------------
 DB_DSN = os.environ.get(
     "DATABASE_URL",
-    "host=127.0.0.1 dbname=ipdr user=ipdr_user password=changeme"
+    "host=127.0.0.1 dbname=elb_ipdr user=elb_ipdr password=changeme"
 )
 
 pool = None
@@ -457,6 +440,12 @@ def lea_query():
         timestamp_str = request.form.get("timestamp", "").strip()
         case_ref = request.form.get("case_ref", "").strip()
         reason = request.form.get("reason", "").strip()
+        try:
+            window_seconds = int(request.form.get("window_seconds", "300"))
+        except (ValueError, TypeError):
+            window_seconds = 300
+        # clamp to sane bounds: 60s .. 6h
+        window_seconds = max(60, min(window_seconds, 21600))
 
         form_data = {
             "public_ip": public_ip,
@@ -464,6 +453,7 @@ def lea_query():
             "timestamp": timestamp_str,
             "case_ref": case_ref,
             "reason": reason,
+            "window_seconds": window_seconds,
         }
 
         if not all([public_ip, port, timestamp_str]):
@@ -500,20 +490,32 @@ def lea_query():
                     "source": "mikrotik-api",
                 }
             mt = mikrotik_lea.lookup(get_db(), public_ip, port_num, query_time,
+                                     window_seconds=window_seconds,
                                      enrich_fn=_mt_enrich)
+            # mt-lea-always-return: on a MikroTik box the MikroTik lookup is
+            # authoritative. Always render its result (found OR not-found) and
+            # return; never fall through to the Juniper nat_logs/nat_flow_logs
+            # queries, which don't apply here and crash on schema mismatch.
             if mt.found:
                 audit_log(
                     "LEA_QUERY",
                     f"IP={public_ip} Port={port} Time={timestamp_str} "
                     f"CaseRef={case_ref} Reason={reason} "
-                    f"Engine=mikrotik Subscriber={mt.primary['username']} "
+                    f"Engine=mikrotik Window={window_seconds}s Subscriber={mt.primary['username']} "
                     f"PortReuse={mt.port_reuse} Candidates={len(mt.candidates)}",
                 )
-                return render_template(
-                    "lea_query.html",
-                    results=None, flow_matches=None,
-                    mt_result=mt, form_data=form_data, query_time=query_time,
+            else:
+                audit_log(
+                    "LEA_QUERY",
+                    f"IP={public_ip} Port={port} Time={timestamp_str} "
+                    f"CaseRef={case_ref} Reason={reason} "
+                    f"Engine=mikrotik Window={window_seconds}s Result=NOT_FOUND",
                 )
+            return render_template(
+                "lea_query.html",
+                results=None, flow_matches=None,
+                mt_result=mt, form_data=form_data, query_time=query_time,
+            )
 
         # Step 1: Find NAT PBA log where the port falls in the block range
         nat_matches = query(
@@ -670,6 +672,315 @@ def username_query():
     return render_template("username_query.html", results=None, form_data=form_data)
 
 # ---------------------------------------------------------------------------
+# Routes — v2.3 Subscriber search + NAT footprint (shared by Username Lookup
+# and Subscriber Timeline).
+# ---------------------------------------------------------------------------
+import re as _re
+
+_MAC_RE = _re.compile(r'^[0-9A-Fa-f]{2}([:-][0-9A-Fa-f]{2}){5}$')
+_IP_RE = _re.compile(r'^\d{1,3}(\.\d{1,3}){3}$')
+
+
+def _classify_q(q):
+    """Detect what kind of identifier the search string is."""
+    q = q.strip()
+    if _MAC_RE.match(q):
+        return "mac"
+    if _IP_RE.match(q):
+        # CGN 100.64/10 vs public
+        try:
+            first, second = int(q.split(".")[0]), int(q.split(".")[1])
+        except (ValueError, IndexError):
+            return "ip"
+        if first == 100 and 64 <= second <= 127:
+            return "cgn"
+        if first in (10, 127) or (first == 172 and 16 <= second <= 31) or (first == 192 and second == 168):
+            return "private"
+        return "public"
+    return "username"
+
+
+def _detect_bogon_mitigation(nas):
+    """Check a MikroTik NAS via API for bogon-mitigation deployment.
+    Returns dict: {configured, has_drop, has_accept, local_devices, has_script}.
+    Read-only — never modifies the router. Safe timeouts; returns unknown on
+    connection failure."""
+    out = {"configured": False, "has_drop": False, "has_accept": False,
+           "local_devices": 0, "has_script": False, "reachable": False}
+    if nas.get("nas_type") != "mikrotik" or not nas.get("api_enabled"):
+        return out
+    try:
+        from librouteros import connect as _mt_connect
+        import mt_crypto as _mtc
+        pw = _mtc.decrypt(nas["api_password_enc"])
+        api = _mt_connect(username=nas["api_user"], password=pw,
+                          host=nas["api_host"] or nas["ip_address"],
+                          port=int(nas["api_port"] or 8728))
+        out["reachable"] = True
+        for r in api.path("ip", "firewall", "raw"):
+            d = dict(r); cm = (d.get("comment") or "").lower()
+            if "bogon" in cm and d.get("action") == "drop":
+                out["has_drop"] = True
+            if "local device" in cm and d.get("action") == "accept":
+                out["has_accept"] = True
+        n = 0
+        for a in api.path("ip", "firewall", "address-list"):
+            if dict(a).get("list") == "LOCAL_DEVICES":
+                n += 1
+        out["local_devices"] = n
+        for s in api.path("system", "script"):
+            if dict(s).get("name") == "sync-local-devices":
+                out["has_script"] = True; break
+        api.close()
+    except Exception:
+        return out
+    out["configured"] = out["has_drop"] and out["has_accept"] and out["has_script"]
+    return out
+
+
+@app.route("/settings/nas/<int:nas_id>/bogon-config")
+@admin_required
+def nas_bogon_config(nas_id):
+    """Render paste-ready RouterOS bogon-mitigation config for this NAS.
+    Entire config pastes in New Terminal; the sync script uses RouterOS's own
+    exported form (paste-safe, no GUI step)."""
+    nas = query("SELECT * FROM nas_devices WHERE id=%s", (nas_id,), one=True)
+    if not nas:
+        flash("NAS not found.", "warning")
+        return redirect(url_for("nas_devices"))
+    _script = '/system script\nadd dont-require-permissions=no name=sync-local-devices policy=read,write,test source="/ip firewall address-list remove [find list=LOCAL_DEVICES comment=\\"arp-sync\\"]\\r\\\n    \\n:foreach a in=[/ip arp find] do={\\r\\\n    \\n  :local ip [/ip arp get \\$a address]\\r\\\n    \\n  :local iface [/ip arp get \\$a interface]\\r\\\n    \\n  :local mac [/ip arp get \\$a mac-address]\\r\\\n    \\n  :if ([:find \\$iface \\"WAN\\"]<0 && [:len \\$mac]>0) do={\\r\\\n    \\n    :if ([:pick \\$ip 0 4]=\\"172.\\" || [:pick \\$ip 0 3]=\\"10.\\" || [:pick \\$ip 0 8]=\\"192.168.\\") do={\\r\\\n    \\n      :do { /ip firewall address-list add list=LOCAL_DEVICES address=\\$ip comment=\\"arp-sync\\" } on-error={}\\r\\\n    \\n    }\\r\\\n    \\n  }\\r\\\n    \\n}"'
+    cfg = """# ==============================================================
+# Bogon mitigation for {name} ({ip})
+# Paste this ENTIRE block in WinBox > New Terminal. Review first.
+# The platform detects status read-only; it does NOT push this.
+# ==============================================================
+
+# 1) BOGON_DEST -- private/bogon destination ranges
+/ip firewall address-list
+add list=BOGON_DEST address=10.0.0.0/8 comment=bogon
+add list=BOGON_DEST address=172.16.0.0/12 comment=bogon
+add list=BOGON_DEST address=192.168.0.0/16 comment=bogon
+add list=BOGON_DEST address=169.254.0.0/16 comment=bogon
+add list=BOGON_DEST address=127.0.0.0/8 comment=bogon
+add list=BOGON_DEST address=100.64.0.0/10 comment=bogon
+
+# 2) LOCAL_MANUAL -- always-allow (EDIT to your mgmt subnet / service IPs)
+/ip firewall address-list
+add list=LOCAL_MANUAL address=172.16.0.0/24 comment="manual: edit to your mgmt subnet"
+
+# 3) sync-local-devices script (RouterOS export form -- pastes as-is)
+{script}
+
+# 4) schedule the sync every 5 minutes
+/system scheduler
+add name=sync-local-devices-sched interval=5m on-event=sync-local-devices comment="refresh LOCAL_DEVICES from ARP"
+
+# 5) run the sync once + verify (expect > 0)
+/system script run sync-local-devices
+/ip firewall address-list print count-only where list=LOCAL_DEVICES
+
+# 6) raw rules -- ACCEPT local + manual BEFORE the bogon rule (starts as observe)
+/ip firewall raw
+add chain=prerouting action=accept src-address=100.64.0.0/10 dst-address-list=LOCAL_DEVICES comment="Allow subscribers to real local devices (ARP)"
+add chain=prerouting action=accept src-address=100.64.0.0/10 dst-address-list=LOCAL_MANUAL comment="Allow subscribers to manual always-allow"
+add chain=prerouting action=passthrough src-address=100.64.0.0/10 dst-address-list=BOGON_DEST comment="COUNT-bogon-dest observe before drop"
+
+# 7) OBSERVE, verify bogon dests are not your own infra, then flip to drop:
+#    /ip firewall raw print stats where comment~"COUNT-bogon"
+#    /ip firewall raw set [find comment~"COUNT-bogon"] action=drop comment="DROP-bogon-dest pre-conntrack saves NAT table"
+""".format(name=nas["name"], ip=nas["ip_address"], script=_script)
+    return render_template("nas_bogon_config.html", nas=nas, cfg=cfg)
+
+
+@app.route("/api/bogon-status/<int:nas_id>")
+@lea_required
+def api_bogon_status(nas_id):
+    """Cached bogon-mitigation status for one NAS. Read from nas_devices
+    (refreshed by the ARP poller every 5 min) so this is instant and never
+    blocks on a live router call."""
+    nas = query("SELECT * FROM nas_devices WHERE id=%s", (nas_id,), one=True)
+    if not nas:
+        return jsonify({"error": "NAS not found"}), 404
+    st = {
+        "reachable": nas.get("bogon_checked_at") is not None,
+        "configured": bool(nas.get("bogon_configured")),
+        "has_drop": bool(nas.get("bogon_has_drop")),
+        "has_accept": bool(nas.get("bogon_has_accept")),
+        "has_script": bool(nas.get("bogon_has_script")),
+        "local_devices": nas.get("bogon_local_devices") or 0,
+        "enabled": bool(nas.get("bogon_mitigation_enabled")),
+        "checked_at": nas.get("bogon_checked_at").isoformat() if nas.get("bogon_checked_at") else None,
+    }
+    return jsonify(st)
+
+
+@app.route("/api/static-arp")
+@lea_required
+def api_static_arp():
+    """Static ARP entries (infrastructure: OLTs, switches, radios, CCTV) for the
+    selected NAS. Returns an interface summary (for filter chips) and the
+    filtered device rows. Query params: iface (filter), q (search IP/MAC/iface)."""
+    _sel = _selected_nas_id()
+    if not _sel:
+        return jsonify({"interfaces": [], "rows": [], "total": 0})
+    iface = (request.args.get("iface") or "").strip()
+    q = (request.args.get("q") or "").strip()
+
+    # interface summary for the chips (always full, unfiltered by iface)
+    ifaces = query(
+        "SELECT interface, COUNT(*) AS n FROM mikrotik_arp "
+        "WHERE nas_id = %s GROUP BY interface ORDER BY n DESC",
+        (_sel,),
+    ) or []
+    total = sum(r["n"] for r in ifaces)
+
+    # rows, filtered
+    sql = ("SELECT host(ip_address) AS ip, mac_address, interface, status, "
+           "       first_seen, last_seen "
+           "FROM mikrotik_arp WHERE nas_id = %s")
+    params = [_sel]
+    if iface:
+        sql += " AND interface = %s"; params.append(iface)
+    if q:
+        sql += (" AND (host(ip_address) ILIKE %s OR mac_address ILIKE %s "
+                "OR interface ILIKE %s)")
+        like = f"%{q}%"; params += [like, like, like]
+    sql += " ORDER BY interface, ip_address LIMIT 2000"
+    rows = query(sql, params) or []
+
+    return jsonify({
+        "interfaces": [{"interface": r["interface"], "count": r["n"]} for r in ifaces],
+        "rows": [dict(r) for r in rows],
+        "total": total,
+        "shown": len(rows),
+    })
+
+
+@app.route("/api/subscriber-search")
+@lea_required
+def api_subscriber_search():
+    """Typeahead + universal search. Returns candidate usernames for a query
+    that may be a username fragment, a CGN IP, a public IP, or a MAC."""
+    q = (request.args.get("q") or "").strip()
+    if len(q) < 2:
+        return jsonify({"results": []})
+    kind = _classify_q(q)
+    out = []
+    _sel = _selected_nas_id()
+    _nf = (" AND nas_id = %s" if _sel else "")
+    _np = ([_sel] if _sel else [])
+    try:
+        if kind == "username":
+            # typeahead from the known secrets (small, indexed) + any usernames
+            # actually seen in recent translations
+            rows = query(
+                "SELECT DISTINCT username FROM mikrotik_secrets "
+                "WHERE username ILIKE %s" + _nf +
+                " ORDER BY username LIMIT 12",
+                ([f"%{q}%"] + _np),
+            ) or []
+            out = [{"username": r["username"], "via": "secret"} for r in rows]
+        elif kind == "cgn":
+            rows = query(
+                "SELECT username, COUNT(*) AS flows, MAX(log_time) AS last_seen "
+                "FROM mikrotik_translations "
+                "WHERE private_ip = %s AND log_time > NOW() - INTERVAL '7 days'" + _nf +
+                " GROUP BY username ORDER BY last_seen DESC LIMIT 12",
+                ([q] + _np),
+            ) or []
+            out = [{"username": r["username"], "via": f"CGN {q} ({r['flows']} flows)"} for r in rows if r["username"]]
+        elif kind == "public":
+            rows = query(
+                "SELECT username, COUNT(*) AS flows, MAX(log_time) AS last_seen "
+                "FROM mikrotik_translations "
+                "WHERE public_ip = %s AND log_time > NOW() - INTERVAL '24 hours'" + _nf +
+                " GROUP BY username ORDER BY last_seen DESC LIMIT 12",
+                ([q] + _np),
+            ) or []
+            out = [{"username": r["username"], "via": f"public {q} ({r['flows']} flows)"} for r in rows if r["username"]]
+        elif kind == "mac":
+            rows = query(
+                "SELECT DISTINCT username FROM mikrotik_translations "
+                "WHERE src_mac = %s AND log_time > NOW() - INTERVAL '7 days'" + _nf +
+                " LIMIT 12",
+                ([q.upper()] + _np),
+            ) or []
+            out = [{"username": r["username"], "via": f"MAC {q}"} for r in rows if r["username"]]
+    except Exception as e:
+        log.error("subscriber-search failed: %s", e)
+    return jsonify({"kind": kind, "results": out})
+
+
+@app.route("/api/subscriber-footprint")
+@lea_required
+def api_subscriber_footprint():
+    """Honest NAT footprint for a subscriber: group by public IP, count DISTINCT
+    ports (never a range), time window, flows, unique destinations. Complete
+    (aggregate, no row LIMIT). Bounded by the requested time window."""
+    username = (request.args.get("username") or "").strip()
+    if not username:
+        return jsonify({"error": "username required"}), 400
+    hours = request.args.get("hours", "6")
+    try:
+        hours = max(1, min(int(hours), 720))  # cap 30 days
+    except ValueError:
+        hours = 6
+    _sel = _selected_nas_id()
+    _nf = (" AND nas_id = %s" if _sel else "")
+    _np = ([_sel] if _sel else [])
+    rows = query(
+        "SELECT host(public_ip) AS public_ip, "
+        "       COUNT(DISTINCT public_port) AS distinct_ports, "
+        "       MIN(log_time) AS first_seen, MAX(log_time) AS last_seen, "
+        "       COUNT(*) AS flows, COUNT(DISTINCT dest_ip) AS unique_dests "
+        "FROM mikrotik_translations "
+        "WHERE username = %s AND log_time > NOW() - (%s || ' hours')::interval" + _nf +
+        " GROUP BY public_ip ORDER BY MAX(log_time) DESC",
+        ([username, str(hours)] + _np),
+    ) or []
+    total_flows = sum(r["flows"] for r in rows)
+    return jsonify({
+        "username": username, "hours": hours,
+        "public_ips": [dict(r) for r in rows],
+        "total_flows": total_flows,
+        "total_public_ips": len(rows),
+    })
+
+
+@app.route("/api/subscriber-flows")
+@lea_required
+def api_subscriber_flows():
+    """Drill-down: exact discrete translation rows for one subscriber on one
+    public IP within a window. Paginated. Uses the (public_ip,port,log_time)
+    LEA index. This is the court-defensible per-flow evidence."""
+    username = (request.args.get("username") or "").strip()
+    public_ip = (request.args.get("public_ip") or "").strip()
+    hours = request.args.get("hours", "6")
+    page = request.args.get("page", "1")
+    try:
+        hours = max(1, min(int(hours), 720)); page = max(1, int(page))
+    except ValueError:
+        hours, page = 6, 1
+    if not username or not public_ip:
+        return jsonify({"error": "username and public_ip required"}), 400
+    per = 100
+    off = (page - 1) * per
+    _sel = _selected_nas_id()
+    _nf = (" AND nas_id = %s" if _sel else "")
+    _np = ([_sel] if _sel else [])
+    rows = query(
+        "SELECT log_time, host(private_ip) AS private_ip, private_port, "
+        "       public_port, host(dest_ip) AS dest_ip, dest_port, protocol "
+        "FROM mikrotik_translations "
+        "WHERE username = %s AND public_ip = %s "
+        "  AND log_time > NOW() - (%s || ' hours')::interval" + _nf +
+        " ORDER BY log_time DESC LIMIT %s OFFSET %s",
+        ([username, public_ip, str(hours)] + _np + [per, off]),
+    ) or []
+    return jsonify({"rows": [dict(r) for r in rows], "page": page, "per_page": per})
+
+
+# ---------------------------------------------------------------------------
 # Routes — CGN IP Lookup (reverse: given a 100.64.x.x, find username)
 # ---------------------------------------------------------------------------
 @app.route("/cgn-lookup", methods=["GET", "POST"])
@@ -820,7 +1131,7 @@ def export_lea_report():
 
     output = io.StringIO()
     output.write(f"EXAMPLE ISP — CGNAT IPDR REPORT\n")
-    output.write(f"AS64500 — Z COM Networks\n")
+    output.write(f"AS64500 — Example ISP\n")
     output.write(f"{'='*60}\n")
     output.write(f"Report Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S PKT')}\n")
     output.write(f"Generated By: {session.get('full_name', session.get('username'))}\n")
@@ -856,7 +1167,7 @@ def export_lea_report():
         output.write("No matching records found.\n")
 
     output.write(f"\n{'='*60}\n")
-    output.write(f"lawful-intercept regulations — Retention: Minimum 1 Year\n")
+    output.write(f"PECA Section 29 — Retention: Minimum 1 Year\n")
     output.write(f"This report is generated from automated CGNAT logging systems.\n")
     output.write(f"Data integrity verified by system audit trail.\n")
 
@@ -1070,12 +1381,12 @@ def api_system_metrics():
 
     if engine == "mikrotik":
         services = sysmetrics.service_status(
-            ["ipdr-web", "mikrotik-ingest", "mikrotik-secrets-sync.timer",
+            ["elb-ipdr-web", "mikrotik-ingest", "mikrotik-secrets-sync.timer",
              "mikrotik-dhcp-poll.timer", "postgresql"]
         )
     else:
         services = sysmetrics.service_status(
-            ["ipdr-web", "ipdr-nat-parser", "ipdr-radius-parser", "postgresql", "freeradius"]
+            ["elb-ipdr-web", "elb-ipdr-nat-parser", "elb-ipdr-radius-parser", "postgresql", "freeradius"]
         )
 
     # Log storage: if alloc set, compute against allocation; else against filesystem
@@ -1184,20 +1495,30 @@ def nat_pool_status():
     """Public-IP pool utilization (MikroTik: derived from translations)."""
     mt_probe_pool = query("SELECT 1 FROM mikrotik_translations LIMIT 1", one=True)
     if mt_probe_pool is not None:
-        _sel = _selected_nas_id()  # _pool_nas_scope
+        # conntrack-pool-metrics: MikroTik uses dynamic NAPT, not port blocks.
+        # Real metrics come from live conntrack snapshots (polled every ~10min),
+        # not cumulative translation counts.
+        _sel = _selected_nas_id()
         _pnf = (" AND nas_id = %s" if _sel else "")
         _pp = ([_sel] if _sel else [])
-        pool_usage = query(
-            """SELECT public_ip,
-                      COUNT(DISTINCT public_port) AS active_blocks,
-                      COUNT(*) AS ports_allocated,
-                      COUNT(DISTINCT username) AS unique_subscribers
-               FROM mikrotik_translations
-               WHERE log_time > NOW() - INTERVAL '24 hours'""" + _pnf + """
-               GROUP BY public_ip
-               ORDER BY public_ip""", _pp
+        # box-wide conntrack table health (the true capacity ceiling)
+        ct_stats = query(
+            "SELECT nas_id, ts, total_entries, max_entries, ip4_entries, ip6_entries "
+            "FROM v_conntrack_latest_stats WHERE 1=1" + _pnf +
+            " ORDER BY total_entries DESC", _pp
         ) or []
-        return render_template("nat_pool.html", pool_usage=pool_usage)
+        # per-public-IP concurrent port usage (public IPs only, via the view)
+        pool_usage = query(
+            "SELECT public_ip, ts, concurrent_conns, distinct_ports, unique_subs, "
+            "       tcp_conns, udp_conns, icmp_conns, "
+            "       ROUND(distinct_ports::numeric / 64512 * 100, 1) AS port_util_pct "
+            "FROM v_conntrack_latest_pool WHERE 1=1" + _pnf +
+            " ORDER BY concurrent_conns DESC", _pp
+        ) or []
+        snapshot_ts = pool_usage[0]["ts"] if pool_usage else (ct_stats[0]["ts"] if ct_stats else None)
+        return render_template("nat_pool.html", engine="mikrotik",
+                               ct_stats=ct_stats, pool_usage=pool_usage,
+                               snapshot_ts=snapshot_ts, usable_ports=64512)
 
     pool_usage = query(
         """SELECT public_ip,
@@ -1644,14 +1965,14 @@ def refresh_dhcp():
     """On-demand DHCP poll for the selected NAS (or all)."""
     import subprocess
     _sel = _selected_nas_id()
-    cmd = ["/opt/ipdr/venv/bin/python",
-           "/opt/ipdr/scripts/mikrotik_dhcp_poll.py"]
+    cmd = ["/opt/elb-ipdr/venv/bin/python",
+           "/opt/elb-ipdr/scripts/mikrotik_dhcp_poll.py"]
     if _sel:
         cmd += ["--nas-id", str(_sel)]
     try:
         env = dict(os.environ)
         # load .env for the subprocess
-        with open("/opt/ipdr/.env") as f:
+        with open("/opt/elb-ipdr/.env") as f:
             for line in f:
                 if "=" in line and not line.strip().startswith("#"):
                     k, v = line.strip().split("=", 1); env[k] = v
@@ -2341,6 +2662,7 @@ def nas_add():
     api_ssl = request.form.get("api_ssl") in ("on", "true", "1", "yes")
     api_port_raw = request.form.get("api_port", "").strip()
     api_password = request.form.get("api_password", "").strip()
+    bogon_mit = request.form.get("bogon_mitigation") in ("on", "true", "1", "yes")
 
     if not name or not ip:
         flash("Name and IP address are required.", "warning")
@@ -2393,13 +2715,14 @@ def nas_add():
             """INSERT INTO nas_devices
                  (name, ip_address, secret, description, nas_type, source_ip,
                   model, syslog_port, status, enabled, created_by,
-                  api_enabled, api_host, api_port, api_ssl, api_user, api_password_enc)
+                  api_enabled, api_host, api_port, api_ssl, api_user, api_password_enc,
+                  bogon_mitigation_enabled)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'staged', TRUE, %s,
-                       %s, %s, %s, %s, %s, %s)""",
+                       %s, %s, %s, %s, %s, %s, %s)""",
             (name, ip, secret, desc, nas_type, source_ip, model, syslog_port,
              session.get("username"),
              api_enabled, (api_host or source_ip or None), api_port, api_ssl,
-             (api_user if api_enabled else None), api_pw_enc),
+             (api_user if api_enabled else None), api_pw_enc, bogon_mit),
         )
     else:
         execute(
@@ -2851,7 +3174,7 @@ def nas_apply():
     """Invoke the scoped root helper to regenerate config + reload FreeRADIUS."""
     try:
         result = subprocess.run(
-            ["sudo", "-n", "/opt/ipdr/scripts/elb-nas-apply.sh"],
+            ["sudo", "-n", "/opt/elb-ipdr/scripts/elb-nas-apply.sh"],
             capture_output=True, text=True, timeout=60,
         )
         out = (result.stdout or "").strip()
@@ -2879,7 +3202,7 @@ def nas_apply():
 # ---------------------------------------------------------------------------
 from flask import send_from_directory
 
-BRANDING_DIR = os.environ.get("BRANDING_DIR", "/opt/ipdr/branding")
+BRANDING_DIR = os.environ.get("BRANDING_DIR", "/opt/elb-ipdr/branding")
 
 @app.route("/branding/asset/<path:filename>")
 def branding_asset(filename):
@@ -2985,7 +3308,7 @@ def branding_favicon():
 @app.route("/settings/branding/reset", methods=["POST"])
 @admin_required
 def branding_reset():
-    """Reset colors/text to ELB defaults (keeps uploaded assets)."""
+    """Reset colors/text to Example ISP defaults (keeps uploaded assets)."""
     if BRANDING_AVAILABLE:
         d = branding_mod.DEFAULTS
         execute("""UPDATE branding SET product_name=%s, tagline=%s, company_name=%s, domain=%s,

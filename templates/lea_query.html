@@ -5,7 +5,7 @@
 {% block content %}
 <div class="peca-banner">
     <i class="fas fa-exclamation-triangle"></i>
-    <strong>Lawful Intercept Compliance:</strong> Every query is logged with operator identity, timestamp, case reference, and reason. Unauthorized queries are a criminal offense.
+    <strong>PECA Section 29 Compliance:</strong> Every query is logged with operator identity, timestamp, case reference, and reason. Unauthorized queries are a criminal offense.
 </div>
 
 <div class="card">
@@ -14,11 +14,12 @@
         <div class="form-row">
             <div class="form-group">
                 <label>Public IP Address *</label>
-                <input type="text" name="public_ip" class="form-control mono" placeholder="203.0.113.100" value="{{ form_data.get('public_ip', '') }}" required>
+                <input type="text" name="public_ip" class="form-control mono" placeholder="198.51.100.208" value="{{ form_data.get('public_ip', '') }}" required>
             </div>
             <div class="form-group">
-                <label>Destination Port *</label>
-                <input type="number" name="port" class="form-control mono" placeholder="24100" value="{{ form_data.get('port', '') }}" required>
+                <label>Public Port *</label>
+                <input type="number" name="port" class="form-control mono" placeholder="42540" value="{{ form_data.get('port', '') }}" required>
+                <small style="display:block; margin-top:4px; color:var(--text-muted); font-size:11px;">The translated source port on the public IP (as seen by the remote server) &mdash; not the destination service port (e.g. 443).</small>
             </div>
             <div class="form-group">
                 <label>Timestamp (ISO 8601) *</label>
@@ -26,6 +27,17 @@
             </div>
         </div>
         <div class="form-row">
+            <div class="form-group">
+                <label>Search Window</label>
+                <select name="window_seconds" class="form-control">
+                    <option value="60">&plusmn; 1 minute (precise)</option>
+                    <option value="300" selected>&plusmn; 5 minutes (default)</option>
+                    <option value="900">&plusmn; 15 minutes</option>
+                    <option value="1800">&plusmn; 30 minutes</option>
+                    <option value="3600">&plusmn; 1 hour (approximate timestamp)</option>
+                </select>
+                <small style="display:block; margin-top:4px; color:var(--text-muted); font-size:11px;">Widen if the request's timestamp is approximate. A wider window may surface multiple subscribers (port reuse) &mdash; use the exact time to disambiguate.</small>
+            </div>
             <div class="form-group">
                 <label>Case Reference / FIR Number</label>
                 <input type="text" name="case_ref" class="form-control" placeholder="FIA/CW/2026/..." value="{{ form_data.get('case_ref', '') }}">

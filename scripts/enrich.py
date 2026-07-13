@@ -38,9 +38,9 @@ LOCAL_RANGES = [
     (ipaddress.ip_network("10.0.0.0/8"), "Private"),
     (ipaddress.ip_network("172.16.0.0/12"), "Private"),
     (ipaddress.ip_network("192.168.0.0/16"), "Private"),
-    (ipaddress.ip_network("203.0.113.100/24"), "PK-ELB"),
-    (ipaddress.ip_network("192.0.2.10/23"), "PK-ELB"),
-    (ipaddress.ip_network("163.61.128.0/24"), "PK-ELB"),
+    (ipaddress.ip_network("203.0.113.100/24"), "PK-Example ISP"),
+    (ipaddress.ip_network("192.0.2.10/23"), "PK-Example ISP"),
+    (ipaddress.ip_network("192.0.2.0/24"), "PK-Example ISP"),
 ]
 
 def geo_country(ip_str):

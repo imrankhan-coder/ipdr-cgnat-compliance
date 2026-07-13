@@ -36,7 +36,7 @@ document.addEventListener('DOMContentLoaded',function(){elbLsTab('pppoe');});
 
 <div class="peca-banner">
     <i class="fas fa-shield-alt"></i>
-    Lawful Intercept Compliance — live subscriber session state (framed IP + device MAC).
+    PECA Section 29 Compliance — live subscriber session state (framed IP + device MAC).
 </div>
 
 <div class="stat-row" style="display:flex; gap:16px; margin:16px 0; flex-wrap:wrap;">
@@ -71,6 +71,7 @@ document.addEventListener('DOMContentLoaded',function(){elbLsTab('pppoe');});
   <button class="elb-tab" data-tab="pppoe" onclick="elbLsTab('pppoe')"><i class="fas fa-user"></i> PPPoE ({{ total }})</button>
   <button class="elb-tab" data-tab="dhcp-dyn" onclick="elbLsTab('dhcp-dyn')"><i class="fas fa-network-wired"></i> DHCP Dynamic ({{ dhcp_dyn_total if dhcp_dyn_total is defined else (dhcp_dyn|length if dhcp_dyn else 0) }})</button>
   <button class="elb-tab" data-tab="dhcp-static" onclick="elbLsTab('dhcp-static')"><i class="fas fa-thumbtack"></i> DHCP Static ({{ dhcp_static_total if dhcp_static_total is defined else (dhcp_static|length if dhcp_static else 0) }})</button>
+  <button class="elb-tab" data-tab="static-arp" onclick="elbLsTab('static-arp'); elbLoadArp();"><i class="fas fa-sitemap"></i> Static ARP <span id="arpTabCount"></span></button>
   <button class="btn btn-sm btn-outline" style="margin-left:auto;" onclick="elbRefreshDhcp(this)"><i class="fas fa-sync"></i> Refresh DHCP</button>
 </div>
 <div class="elb-tabpanel" data-panel="pppoe">
@@ -135,7 +136,72 @@ document.addEventListener('DOMContentLoaded',function(){elbLsTab('pppoe');});
   </tbody></table>
   {% else %}<p class="text-muted">No static DHCP leases. Click "Refresh DHCP" to poll now.</p>{% endif %}
 </div>
+<div class="elb-tabpanel" data-panel="static-arp">
+  <p class="text-muted" style="font-size:12px; margin:0 0 10px;">Statically-addressed infrastructure (OLTs, switches, radios, CCTV) from the router ARP table &mdash; excludes WAN uplinks and DHCP-assigned addresses.</p>
+  <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap:wrap;">
+    <input type="text" id="arpSearch" placeholder="Search IP / MAC / interface&hellip;" style="flex:1; min-width:220px; padding:8px 12px; border:1px solid var(--border); border-radius:6px; font-size:13px;">
+    <button class="btn btn-sm btn-outline" onclick="elbLoadArp(true)"><i class="fas fa-sync"></i> Refresh</button>
+  </div>
+  <div id="arpChips" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;"></div>
+  <div id="arpResult"><p class="text-muted">Loading&hellip;</p></div>
+</div>
 
     </div>
 </div>
+
+<script>
+(function(){
+  var curIface = "";
+  var loaded = false, tmr = null;
+  function esc(x){ return String(x==null?'':x).replace(/[&<>"]/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function statusColor(s){
+    s=(s||'').toLowerCase();
+    if(s==='reachable') return 'var(--success)';
+    if(s==='stale') return 'var(--text-muted)';
+    if(s==='incomplete'||s==='failed') return 'var(--warning)';
+    return 'var(--text-muted)';
+  }
+  window.elbLoadArp = function(force){
+    if(loaded && !force) return;
+    loaded = true;
+    var q = (document.getElementById('arpSearch')||{}).value || '';
+    var url = '/api/static-arp?iface='+encodeURIComponent(curIface)+'&q='+encodeURIComponent(q);
+    document.getElementById('arpResult').innerHTML = '<p class="text-muted">Loading&hellip;</p>';
+    fetch(url).then(function(r){return r.json();}).then(function(d){
+      var tc=document.getElementById('arpTabCount');
+      if(tc) tc.textContent = '('+ (d.total||0) +')';
+      var chips = '<button class="btn btn-sm '+(curIface===''?'btn-primary':'btn-outline')+'" data-if="" style="font-size:11px;padding:3px 10px;">All ('+(d.total||0)+')</button>';
+      (d.interfaces||[]).forEach(function(it){
+        var active = curIface===it.interface;
+        chips += '<button class="btn btn-sm '+(active?'btn-primary':'btn-outline')+'" data-if="'+esc(it.interface)+'" style="font-size:11px;padding:3px 10px;">'+esc(it.interface)+' ('+it.count+')</button>';
+      });
+      var chipBox=document.getElementById('arpChips');
+      chipBox.innerHTML = chips;
+      chipBox.querySelectorAll('button[data-if]').forEach(function(b){
+        b.addEventListener('click', function(){ curIface = b.getAttribute('data-if'); elbLoadArp(true); });
+      });
+      var rows = d.rows||[];
+      if(!rows.length){ document.getElementById('arpResult').innerHTML='<p class="text-muted">No matching devices.</p>'; return; }
+      var html='<table class="data-table"><thead><tr><th>Interface / VLAN</th><th>IP Address</th><th>MAC</th><th>Status</th><th>Last Seen</th></tr></thead><tbody>';
+      rows.forEach(function(r){
+        html+='<tr>'+
+          '<td>'+esc(r.interface)+'</td>'+
+          '<td class="mono"><strong>'+esc(r.ip)+'</strong></td>'+
+          '<td class="mono">'+esc(r.mac_address||'—')+'</td>'+
+          '<td><span style="color:'+statusColor(r.status)+'; font-size:12px;">'+esc(r.status||'—')+'</span></td>'+
+          '<td class="mono" style="font-size:11px;">'+esc(r.last_seen)+'</td></tr>';
+      });
+      html+='</tbody></table>';
+      if(d.shown>=2000) html+='<p class="text-muted" style="font-size:11px;">Showing first 2000 &mdash; narrow with an interface or search.</p>';
+      document.getElementById('arpResult').innerHTML = html;
+    }).catch(function(){ document.getElementById('arpResult').innerHTML='<p class="text-muted">Failed to load ARP.</p>'; });
+  };
+  document.addEventListener('input', function(e){
+    if(e.target && e.target.id==='arpSearch'){
+      clearTimeout(tmr); tmr=setTimeout(function(){ elbLoadArp(true); }, 250);
+    }
+  });
+})();
+</script>
 {% endblock %}
